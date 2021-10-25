@@ -1,0 +1,6 @@
+imgui.ini
+build/*
+*.bak
+*.sym
+*.o
+*.map
