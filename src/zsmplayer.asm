@@ -7,7 +7,7 @@
 .export startmusic
 .export stopmusic
 
-ZSM_HDR_SIZE	=	3	; will soon be larger
+ZSM_HDR_SIZE	=	16	; will soon be larger
 ZSM_EOF			=	$80	; (equates to pause cmd, value=0)
 
 .segment "ZEROPAGE"
