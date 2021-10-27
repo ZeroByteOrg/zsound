@@ -249,8 +249,7 @@ nextYM:
 			lda (data)
 			tay				; Y now holds the YM register address
 			jsr nextdata
-:			bit YM_data
-			bmi :-			; wait for YM busy flag to be clear
+			YM_BUSY_WAIT
 			sty YM_reg
 			lda (data)
 			sta YM_data
