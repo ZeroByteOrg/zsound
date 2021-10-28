@@ -10,7 +10,8 @@ define ("MODE_FM", 0x01);
 
 $dmplist = parse_cmdline_args();
 $patches = load_patches($dmplist);
-//$patches: array(n -> number of patches, data -> array of binary data , names -> array[x])
+define ("YMBASE",'$9F40');
+$basline = BASIC_LINE;
 
 $ERR=false;
 if ($patches['n'] > 0) {
@@ -37,12 +38,14 @@ function load_patches($dmplist) {
 		$dmp = read_dmp($dmpfile);
 		if (sizeof($dmp)==0) { continue; }
 		$name = pathinfo($dmpfile)['filename'];
+		// do some char substitutions here to remove spaces and whatnot
+		// $name = FILTERED NAME
 		$data = parse_dmp($dmp);
 		if (sizeof($data) != 26) { 
 			print "WARNING: $dmpfile did not contain a valid patch. (skipped)\n";
 			continue;
 		}
-		array_merge($p['data'],$data);
+		$p['data'] = array_merge($p['data'],$data);
 		array_push($p['names'],$name);
 		$p['n']++;
 	}
@@ -67,11 +70,53 @@ function read_dmp($filename) {
 	return($dmp);
 }
 
-function parse_dmp($data) {
-	print "stub: parsing DMP file\n";
-	$p = array();
-	for ($i = 0 ; $i < 26 ; $i++) { array_push($p,0); }
-	return($p);
+function parse_dmp($dmp) {
+	$data = array();
+	$p = array (
+	  'LR'		=> 0xc0,
+	  'PMS'     => ($dmp[3] & 0x07) << 4,
+	  'FB'      => ($dmp[4] & 0x07) << 3,
+	  'CONNECT' => $dmp[5]  & 0x07,
+	  'AMS'     => $dmp[6]  & 0x03
+	);
+	$data[0] = $p['LR'] | $p['FB'] | $p['CONNECT'];
+	$data[1] = $p['PMS'] | $p['AMS'];
+
+	$offset = 7; // per-operator parameters begin at DMP offset 7.
+
+	for ( $oper = 0 ; $oper < 4 ; $oper++ ) {
+		// Create array of the Per-Op parameters indexed by names from
+		// the YM2151 datasheet. Pre-mask and shift the bits of each
+		// parameter to go into their proper places in the registers.
+		// (names make it SO MUCH EASIER to follow)
+		$p = array(
+			'MUL'   => $dmp[$offset+0]  &0x0f,
+			'TL'    => $dmp[$offset+1]  &0x7f,
+			'AR'    => $dmp[$offset+2]  &0x1f,
+			'D1R'   => $dmp[$offset+3]  &0x1f,
+			'D1L'   => ($dmp[$offset+4] &0x0f)<<4,
+			'RR'    => $dmp[$offset+5]  &0x0f,
+			'AMSEN' => ($dmp[$offset+6] &0x01)<<7,
+			'KS'    => ($dmp[$offset+7] &0x03)<<6,
+			'DT1'   => ($dmp[$offset+8] &0x07)<<4,
+			'DT2'   => ($dmp[$offset+8] &0x30)<<2, // why'd they bitstuff this ONE parameter?
+			'D2R'   => $dmp[$offset+9]  &0x1f,
+			'SSGEG' => $dmp[$offset+10] // Unused in YM2151
+		);
+		$o = $oper;
+		//if ($o == 2) { $o = 1; } else if ($o == 1) { $o = 2; }
+
+		$data[$o+2]  = $p['DT1'] | $p['MUL'];
+		$data[$o+6]  = $p['TL'];
+		$data[$o+10] = $p['KS'] | $p['AR'];
+		$data[$o+14] = $p['AMSEN'] | $p['D1R'];
+		$data[$o+18] = $p['DT2'] | $p['D2R'];
+		$data[$o+22] = $p['D1L'] | $p['RR'];
+
+		$offset += 11;
+		print "\n";
+	};
+	return($data);
 }
 
 function write_asm($patches) {
@@ -79,8 +124,25 @@ function write_asm($patches) {
 	return(false); // false=no errors;
 }
 function write_basic($patches) {
-	print "stub: writing BASIC to " . OUTNAME . ".basic.txt\n";
-	return(false); // false=no errors;
+	$tab=array(
+		0x20,0x38,
+		0x40,0x48,0x50,0x58,0x60,0x68,0x70,0x78,
+		0x80,0x88,0x90,0x98,0xa0,0xa8,0xb0,0xb8,
+		0xc0,0xc8,0xd0,0xd8,0xe0,0xe8,0xf0,0xf8
+	);
+			
+	printbasic ('REM SET '.VARNAME.'= VOICE NUMBER AND GOSUB HERE TO LOAD PATCH');
+	$i = 0;
+	foreach ($patches['names'] as $name) {
+		printbasic ('REM PATCH $name');
+		for ($j = 0 ; $j < 26 ; $j++) {
+//			printbasic ('POKE '.YMBASE.','.$tab[$j].'+'.VARNAME.' : POKE '.YMBASE.'+1,'.$patches['data'][$i]);
+			printbasic (sprintf('POKE $9F40,$%02X+CH : POKE $9F41,$%02X',$tab[$j],$patches['data'][$i]));
+			$i++;
+		}
+		printbasic('RETURN');
+	}
+	return(false);
 }
 function write_c($patches) {
 	print "stub: writing C array to " . OUTNAME . ".h\n";
@@ -88,6 +150,15 @@ function write_c($patches) {
 }
 function write_bin($patches) {
 	print "stub: writing BINARY to " . OUTNAME . ".bin\n";
+	retun(false);
+	$of = fopen($ofile, "w+b");
+	if (! $of) {
+		print "ERROR writing to " .OUTNAME. ".YMP\n";
+		return(true);
+	}
+	fwrite($of,"yi");
+	fwrite($of,pack('C*',...$patches));
+	fclose($of);
 	return(false); // false=no errors;
 }
 
