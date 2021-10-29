@@ -1,23 +1,40 @@
 #!/usr/bin/php
 <?php
 
+// some constants related to the DMP file format.
+// (change if necessary due to changes in DMP format)
 define("MAXSIZE",0x33);
-
 define ("FILE_VERSION", 0x0b);
 define ("SYSTEM_YM2151", 0x08);
 define ("SYSTEM_GENESIS", 0x02);
 define ("MODE_FM", 0x01);
+define ("YMBASE_R38", 0x9fe0);
+define ("YMBASE_R39", 0x9f40);
+
+define ("EXT_ASM", '.inc');
+define ("EXT_BASIC", '.bas');
+define ("EXT_C", '.h');
+define ("EXT_BIN", '.YMP');
+
+define ("USAGE","$argv[0] [-hHprbac] [-l <BASIC line number>] [-o output_name_prefix] file1 [file2] [...]");
+
+global $OF;
 
 $dmplist = parse_cmdline_args();
-$patches = load_patches($dmplist);
-define ("YMBASE",'$9F40');
 $basline = BASIC_LINE;
+$patches = load_patches($dmplist);
 
 $ERR=false;
+
 if ($patches['n'] > 0) {
+	printf("Loaded a total of %d patches:\n",$patches['n']);
+	$n=0;
+	foreach($patches['names'] as $name) {
+		printf(" %2d: %s\n",$n++,$name);
+	}
 	if (OUT_ASM)	{ $ERR = write_asm($patches); }
 	if (OUT_BASIC)	{ $ERR = write_basic($patches); }
-	if (OUT_BIN)	{ $ERR = write_bin($patches); }
+	if (OUT_BIN)	{ $ERR = write_bin($patches['data']); }
 	if (OUT_C)		{ $ERR = write_c($patches); }
 } else {
 	print "No input files successfully imported. No output generated.\n";
@@ -28,35 +45,58 @@ exit(0);
 
 // =================================== END OF MAIN PROGRAM =============
 
-function load_patches($dmplist) {
+function namefilter($name) {
+// filter characters from names, as they're going to be used as identifiers
+// in code. May as well save users from themselves if filenames have chars
+// that don't work in identifiers in programs.
+	$name = preg_replace("/[\t\n]/", " ", $name); // remove tabs and newlines
+	$name = preg_replace("/\s+/", " ", $name); // remove multi-space
+	$name = preg_replace("/[\s.-]/", "_", $name); // space,dot,and dash -> underscore
+	$name = preg_replace("/^[0-9]*/", "", $name); // remove leading digits
+	$name = 'YMP_' . $name; // apply YMP_ prefix. (YMP = YM Patch)
+	return($name);
+}
+
+function load_patches($filelist) {
 	$p = array(
 		'n' 	=> 0,		// number of patches loaded
 		'data'	=> array(),	// raw binary bytes of all patches together
 		'names'	=> array()	// names of the files the patches were imported from
 	);
-	foreach($dmplist as $dmpfile) {
-		$dmp = read_dmp($dmpfile);
-		if (sizeof($dmp)==0) { continue; }
-		$name = pathinfo($dmpfile)['filename'];
-		// do some char substitutions here to remove spaces and whatnot
-		// $name = FILTERED NAME
-		$data = parse_dmp($dmp);
-		if (sizeof($data) != 26) { 
-			print "WARNING: $dmpfile did not contain a valid patch. (skipped)\n";
-			continue;
+	foreach($filelist as $infile) {
+		$name = trim(pathinfo($infile)['filename']);
+		$ext  = trim(pathinfo($infile)['extension']);
+		switch(strtolower($ext)) {
+		case 'dmp':
+			$patch = get_dmp_patch($infile);
+			if (sizeof($patch) != 26) { 
+				print "WARNING: $infile did not contain a valid patch. (skipped)\n";
+			} else {
+				$p['data'] = array_merge($p['data'],$patch);
+				//$p['data'] = $p['data'] + $patch; // THIS WORKED UNTIL COMBINING FUNCTIONS.....
+				array_push($p['names'],namefilter($name));
+				$p['n']++;
+			}
+			break;
+		case 'opm':
+			print "STUB: OPM file $infile (support is planned)\n";
+			break;
+		default:
+			print "WARNING: Unknown file type: $infile (skipped)\n";
+			break;
 		}
-		$p['data'] = array_merge($p['data'],$data);
-		array_push($p['names'],$name);
-		$p['n']++;
 	}
 	return($p);
 }
 
-function read_dmp($filename) {
+function get_dmp_patch($filename) {
+
+	$data = array();
+
 	$filesize = filesize($filename);
 	if ( $filesize > MAXSIZE ) {
 	  print "WARNING: $filename is too large to be a DMP file. (Skipping)\n";
-	  return(array());
+	  return($data);
 	}
 	$f = fopen($filename, "r");
 	if (! $f) {
@@ -67,11 +107,27 @@ function read_dmp($filename) {
 	fclose($f);
 	$dmp = unpack(sprintf('C%d',$filesize),$dmp);
 	$dmp = array_values($dmp);
-	return($dmp);
-}
 
-function parse_dmp($dmp) {
-	$data = array();
+	if (sizeof($dmp)==0) { 
+		print "WARNING: error while reading $filename. (Skipping)\n";
+		return($data);
+	}
+
+	if ($dmp[0] != FILE_VERSION) {
+	  print "ERROR: The first byte of DMP is not ".FILE_VERSION."\n";
+	  return($data);
+	};
+
+	if (($dmp[1] != SYSTEM_YM2151) && ($dmp[1] != SYSTEM_GENESIS)) {
+	  print "ERROR: DMP is not a YM2151 or Genesis patch.\n";
+	  return($data);
+	};
+
+	if ($dmp[2] != MODE_FM) {
+	  print "ERROR: DMP data instrument mode is not set to FM.\n";
+	  return($data);
+	};
+
 	$p = array (
 	  'LR'		=> 0xc0,
 	  'PMS'     => ($dmp[3] & 0x07) << 4,
@@ -85,10 +141,10 @@ function parse_dmp($dmp) {
 	$offset = 7; // per-operator parameters begin at DMP offset 7.
 
 	for ( $oper = 0 ; $oper < 4 ; $oper++ ) {
-		// Create array of the Per-Op parameters indexed by names from
+		// Create a table of the Per-Op parameter names from
 		// the YM2151 datasheet. Pre-mask and shift the bits of each
-		// parameter to go into their proper places in the registers.
-		// (names make it SO MUCH EASIER to follow)
+		// parameter from DMP data for their proper places in the YM registers.
+		// (names make it SO MUCH EASIER to follow the code)
 		$p = array(
 			'MUL'   => $dmp[$offset+0]  &0x0f,
 			'TL'    => $dmp[$offset+1]  &0x7f,
@@ -103,151 +159,173 @@ function parse_dmp($dmp) {
 			'D2R'   => $dmp[$offset+9]  &0x1f,
 			'SSGEG' => $dmp[$offset+10] // Unused in YM2151
 		);
-		$o = $oper;
-		//if ($o == 2) { $o = 1; } else if ($o == 1) { $o = 2; }
-
-		$data[$o+2]  = $p['DT1'] | $p['MUL'];
-		$data[$o+6]  = $p['TL'];
-		$data[$o+10] = $p['KS'] | $p['AR'];
-		$data[$o+14] = $p['AMSEN'] | $p['D1R'];
-		$data[$o+18] = $p['DT2'] | $p['D2R'];
-		$data[$o+22] = $p['D1L'] | $p['RR'];
+		$data[$oper+2]  = $p['DT1'] | $p['MUL'];
+		$data[$oper+6]  = $p['TL'];
+		$data[$oper+10] = $p['KS'] | $p['AR'];
+		$data[$oper+14] = $p['AMSEN'] | $p['D1R'];
+		$data[$oper+18] = $p['DT2'] | $p['D2R'];
+		$data[$oper+22] = $p['D1L'] | $p['RR'];
 
 		$offset += 11;
-		print "\n";
 	};
-	return($data);
+	ksort($data,SORT_NUMERIC);
+	// as PHP doesn't use the index numbers as actual ordinal indexing, this array
+	// is built in a bad order. This loop builds a new one where index key = actual order.
+	// ... this is one of those PHP-isms that make people hate PHP, and maybe there's a better
+	// way to fix this with a built-in function, but I'm tired of reading docs, and this works.
+//	$returndata = array();
+//	for($i=0;$i<26;$i++) { array_push($returndata,$data[$i]); }
+	//return($returndata);
+	return ($data);
 }
 
+function set_outfile($filename) {
+//returns "errors_present" i.e. true if errors, false if successful
+// i.e. this boolean is shell command "exit code" mentality
+	global $OF;
+	$OF = fopen($filename,'w');
+	if (! $OF) {
+		print "Error opening $filename for writing. Skipping.\n";
+		return(true);
+	}
+	return(false); //
+};
+
 function write_asm($patches) {
-	print "stub: writing ASM to " . OUTNAME . ".inc\n";
+	
+	global $OF;
+
+	$ofname = OUTNAME . EXT_ASM;
+	if(set_outfile($ofname)) { return(true); } // return errors=true
+	$i = 0;
+	foreach($patches['names'] as $name) {
+		fwrite($OF,"$name:");
+		for ($j=$i;$j<$i+26;$j++) {
+			if ($i-$j % 8 == 0)
+				fwrite($OF,"\n\t.byte\t");
+			else
+				fwrite($OF,",");
+			fwrite($OF,sprintf('$%02X',$patches['data'][$j]));
+		}
+		fwrite($OF,"\n\n");
+	}
+	fwrite($OF,"\n;Patch Table (low together, high together)\n");
+	foreach(array('lo','hi') as $order) {
+		if ($order == 'lo')
+			$bracket = '<';
+		else
+			$bracket = '>';
+		fwrite($OF,sprintf("%s_%s:",OUTNAME,$order));
+		$i = 0;
+		foreach($patches['names'] as $name) {
+			if ($i % 4 == 0)
+				fwrite($OF,"\n\t.byte\t");
+			else
+				fwrite($OF,", ");
+			$i++;
+			fwrite($OF,sprintf("%s%s",$bracket,$name));
+		}
+		fwrite($OF,"\n");
+	}
+	fwrite($OF,"\n;Patch table indexes:\n");
+	$i = 0;
+	foreach($patches['names'] as $name) {
+		$name = preg_replace("/^YMP_/", "", $name);
+		$name = strtoupper($name . "_ID");
+		fwrite($OF,"\t$name\t= $i\n");
+		$i++;
+	}
+	print "Wrote ASM output to $ofname\n";
+	fclose($OF);
 	return(false); // false=no errors;
 }
+
 function write_basic($patches) {
+
+	global $OF;
 	$tab=array(
 		0x20,0x38,
 		0x40,0x48,0x50,0x58,0x60,0x68,0x70,0x78,
 		0x80,0x88,0x90,0x98,0xa0,0xa8,0xb0,0xb8,
 		0xc0,0xc8,0xd0,0xd8,0xe0,0xe8,0xf0,0xf8
 	);
-			
+	$ofname = OUTNAME . EXT_BASIC;
+	if(set_outfile($ofname)) { return(true); }
+				
 	printbasic ('REM SET '.VARNAME.'= VOICE NUMBER AND GOSUB HERE TO LOAD PATCH');
 	$i = 0;
 	foreach ($patches['names'] as $name) {
-		printbasic ('REM PATCH $name');
+		printbasic (sprintf("REM %s",strtoupper($name)));
 		for ($j = 0 ; $j < 26 ; $j++) {
-//			printbasic ('POKE '.YMBASE.','.$tab[$j].'+'.VARNAME.' : POKE '.YMBASE.'+1,'.$patches['data'][$i]);
-			printbasic (sprintf('POKE $9F40,$%02X+CH : POKE $9F41,$%02X',$tab[$j],$patches['data'][$i]));
+			printbasic (sprintf('POKE $%04X,$%02X+CH : POKE $%04X,$%02X',YMBASE,$tab[$j],YMBASE+1,$patches['data'][$i]));
 			$i++;
 		}
 		printbasic('RETURN');
 	}
+	fclose($OF);
+	print "Wrote BASIC output to $ofname\n";
 	return(false);
 }
+
 function write_c($patches) {
-	print "stub: writing C array to " . OUTNAME . ".h\n";
+	global $OF;
+
+	$ofname = OUTNAME . EXT_C;
+	if(set_outfile($ofname)) { return(true); }
+	// print an enum for easy reference into a table of patch pointers
+	fprintf($OF,"// instrument name references\n");
+	fprintf($OF,sprintf("enum %s {\n",OUTNAME.'_index'));
+	$i = 0;
+	foreach ($patches['names'] as $name) {
+		fprintf($OF,sprintf("\t%s = %d,\n",strtoupper($name),$i));
+		$i += 26;
+	}
+	fprintf($OF,sprintf("\t%s = %d\n};\n\n",strtoupper(OUTNAME . "_COUNT"),$i/26));
+
+	$data = $patches['data'];
+	$n = $patches['n'];
+	// print array of patch data bytes
+	$i = 0;
+	$d = 0;
+	fprintf($OF,sprintf("static const char %s[] = {",OUTNAME.'_data'));
+	while ($d < sizeof($data)) {
+		if ($d % 16 == 0) {
+			fprintf($OF,"\n\t");
+		}
+		fprintf($OF,sprintf("0x%02x,",$data[$d++]));
+	};
+	fprintf($OF,"\n};\n\n");
+	fclose($OF);
+	print "Wrote C output to $ofname\n";
 	return(false); // false=no errors;
 }
-function write_bin($patches) {
-	print "stub: writing BINARY to " . OUTNAME . ".bin\n";
-	retun(false);
-	$of = fopen($ofile, "w+b");
-	if (! $of) {
-		print "ERROR writing to " .OUTNAME. ".YMP\n";
-		return(true);
+
+function write_bin($patchdata) {
+	
+	global $OF;
+
+	$ofname = OUTNAME . EXT_BIN;
+	if(set_outfile($ofname)) { return(true); }
+
+	if (BIN_PRGHDR) {fwrite($OF,"yi");}
+	fwrite($OF,pack('C*',...$patchdata));
+	fclose($OF);
+	print "Wrote binary output to $ofname";
+	if (BIN_PRGHDR) {
+		print " with 2-byte dummy PRG header\n";
+	} else {
+		print "\n";
 	}
-	fwrite($of,"yi");
-	fwrite($of,pack('C*',...$patches));
-	fclose($of);
 	return(false); // false=no errors;
 }
 
 function printbasic($s) {
   global $basline;
+  global $OF;
 
-  printf ("%d %s\n",$basline, $s);
+  fprintf ($OF,"%d %s\n",$basline, $s);
   $basline += BASIC_STEP;
 };
-
-define ("EOF",count($dmp));
-
-if ($dmp[0] != FILE_VERSION) {
-  fwrite(STDERR, "WARNING: The first byte is not ".FILE_VERSION."\n");
-};
-
-if ($dmp[1] != SYSTEM_YM2151) {
-  fwrite(STDERR, "FATAL: This is not a YM2151 patch.\n");
-  exit;
-};
-
-if ($dmp[2] != MODE_FM) {
-  fwrite(STDERR, "FATAL: The instrument mode is not set to FM.\n");
-  exit;
-};
-
-$basline = BASIC_LINE;
-
-$p = array (
-  'PMS'     => ($dmp[3] & 0x07) << 4,
-  'FB'      => ($dmp[4] & 0x07) << 3,
-  'CONNECT' => $dmp[5]  & 0x07,
-  'AMS'     => $dmp[6]  & 0x03
-);
-
-$val20 = sprintf('$%02X', 0xc0 | $p['FB'] | $p['CONNECT']);
-$val38 = sprintf('$%02X', $p['PMS'] | $p['AMS']);
-
-printbasic ('REM SET '.VARNAME.'= VOICE NUMBER AND GOSUB HERE TO LOAD PATCH');
-printbasic ('POKE $9FE0,$20+'.VARNAME." : POKE $9FE1,".$val20);
-printbasic ('POKE $9FE0,$38+'.VARNAME." : POKE $9FE1,".$val38);
-
-// output the POKEs required to push these onto YM2151 here....
-$offset = 7;
-
-for ( $oper = 0 ; $oper < 4 ; $oper++ ) {
-  // Create array of Per-Op parameters indexed by names in the YM2151 datasheet
-  // Pre-mask and shift the bits of each parameter to go into their proper
-  // place in the register.
-  $p = array(
-	'MUL'   => $dmp[$offset+0]  &0x0f,
-	'TL'    => $dmp[$offset+1]  &0x7f,
-	'AR'    => $dmp[$offset+2]  &0x1f,
-	'D1R'   => $dmp[$offset+3]  &0x1f,
-	'D1L'   => ($dmp[$offset+4] &0x0f)<<4,
-	'RR'    => $dmp[$offset+5]  &0x0f,
-	'AMSEN' => ($dmp[$offset+6] &0x01)<<7,
-	'KS'    => ($dmp[$offset+7] &0x03)<<6, 
-	'DT1'   => ($dmp[$offset+8] &0x07)<<4,
-	'DT2'   => ($dmp[$offset+8] &0x30)<<2,
-	'D2R'   => $dmp[$offset+9]  &0x1f,
-	'SSGEG' => $dmp[$offset+10] // I think this is unused
-  );
-  // set up the per-register data fields for a single channel
-  // using the parameters loaded from the DMP file.
-  $val40 = sprintf('$%02X',$p['DT1'] | $p['MUL']);
-  $val60 = sprintf('$%02X',$p['TL']);
-  $val80 = sprintf('$%02X',$p['KS'] | $p['AR']);
-  $valA0 = sprintf('$%02X',$p['AMSEN'] | $p['D1R']);
-  $valC0 = sprintf('$%02X',$p['DT2'] | $p['D2R']);
-  $valE0 = sprintf('$%02X',$p['D1L'] | $p['RR']);
-
-  $a40 = sprintf('$%2X',0x40 + $oper * 8);
-  $a60 = sprintf('$%2X',0x60 + $oper * 8);
-  $a80 = sprintf('$%2X',0x80 + $oper * 8);
-  $aA0 = sprintf('$%2X',0xA0 + $oper * 8);
-  $aC0 = sprintf('$%2X',0xC0 + $oper * 8);
-  $aE0 = sprintf('$%2X',0xE0 + $oper * 8);
-  printbasic ("REM --- SETTINGS FOR OPERATOR $oper ---");
-  printbasic ('POKE $9FE0,'.$a40.'+'.VARNAME." : POKE $9FE1,".$val40);
-  printbasic ('POKE $9FE0,'.$a60.'+'.VARNAME." : POKE $9FE1,".$val60);
-  printbasic ('POKE $9FE0,'.$a80.'+'.VARNAME." : POKE $9FE1,".$val80);
-  printbasic ('POKE $9FE0,'.$aA0.'+'.VARNAME." : POKE $9FE1,".$valA0);
-  printbasic ('POKE $9FE0,'.$aC0.'+'.VARNAME." : POKE $9FE1,".$valC0);
-  printbasic ('POKE $9FE0,'.$aE0.'+'.VARNAME." : POKE $9FE1,".$valE0);
-  
-  $offset += 11;
-};
-printbasic ('RETURN');
 
 function parse_cmdline_args() {
 	global $argc;
@@ -255,15 +333,16 @@ function parse_cmdline_args() {
 
 	$dmpfiles = array();
 	
-	$opts = getopt('hHprbacl:o:', [], $rest_index);
+	$opts = getopt('hHprbBacl:o:', [], $rest_index);
 
 	if (isset($opts['h'])) {usage();}
+//	if (isset($opts['h'])) {usage();}
 	if (isset($opts['H'])) {show_format_help();}
 	
 	if (isset($argv[$rest_index])) {
 		$dmpfiles = array_slice($argv,$rest_index);
 	} else {
-		usage();
+		shortusage("No input files specified.");
 	}
 	
 	if (isset($opts['o'])) {
@@ -297,8 +376,14 @@ function parse_cmdline_args() {
 		define("OUT_ASM",false);
 	}
 	
-	if (isset($opts['b'])) {
+	if (isset($opts['b'])||isset($opts['B'])) {
 		define("OUT_BASIC",true);
+		if (isset($opts['b'])) {
+			define("YMBASE",YMBASE_R39);
+		}
+		else { 
+			define("YMBASE",YMBASE_R38);
+		}
 		define ("VARNAME","CH");
 		define ("BASIC_STEP",1);
 	} else {
@@ -310,36 +395,58 @@ function parse_cmdline_args() {
 	} else {
 		define("OUT_C",false);
 	}
+	
+	if (! (OUT_ASM || OUT_BASIC || OUT_BIN || OUT_C)) {
+		shortusage("No output format selected.");
+	}
+	
 	return($dmpfiles);
+}
+
+function shortusage($message) {
+	global $argv;
+	print "\nUSAGE:\n";
+	print "  " . USAGE . "\n";
+	print "  $argv[0] -h for more help.\n\n";
+	if (strlen($message) > 0) {
+		print "ERROR:\n  $message\n\n";
+	}
+	exit(1);
 }
 
 function usage() {
 	global $opts;
 	global $argv;
+
+	$row = "%15s %s\n";
+
 	
 	print "dmp2x16 is a script that converts Deflemask FM instrument files into one or ";
 	print "more formats suitable for import on the Commander X16. Each .DMP file is one";
 	print "instrument. All valid instruments will be output combined into a single file";
 	print "for each activated output format.\n";
 	print "\nUSAGE:\n";
-	$row = "%25s %s\n";
-	printf($row,"$argv[0] [-hHprbac] [-l <BASIC line number>] [-o output_name_prefix] file1 [file2] [...]","\n");
+//	printf($row,"$argv[0] [-hHprbac] [-l <BASIC line number>] [-o output_name_prefix] file1 [file2] [...]","\n");
+	print USAGE . "\n";
 	printf($row,"-h :","This help information.");
 	printf($row,"-H :","Show help about using the output data format.");
 	print "\nINPUT FILE(s): Deflemask DMP instruments (must be FM instruments).\n";
 	print "\nOUTPUT FORMATS:\n";
 	print "At least one output format must be chosen (BASIC, C, ASM, or BINARY)\n";
-	printf($row,"-b :","Create BASIC subroutines which patch the YM");
+	printf($row,"-b or -B :","Create BASIC subroutines which patch the YM");
+	printf($row,"","-B : Use YM2151 base address $9FE0. (r38 emulator)");
+	printf($row,"","-b : Use YM2151 base address $9F40. (r39 / real HW)");
+	printf($row,"","   : if both are specified, -b is used.");
 	printf($row,"-c :","Create C byte arrays for each input file");
 	printf($row,"-a :","Create Assembly .byte sets with one label per input file");
 	printf($row,"-p :","Create a binary file with two dummy bytes as PRG header");
 	printf($row,"-r :","Create a binary file with no dummy PRG header");
 	printf($row,"","-- If both -p and -r are specified, -r takes priority");
-	print "\nFILE NAMES:\n";
-	print "The output file(s) will be named as name.bas, name.h, name.inc, name.YMP (YM Patch)\n";
-	print "for the formats BASIC, C, Assembly, and binary, respectively.\n";
-	print "\nBy default, name = \"patches\" but may be specified using:\n";
-	printf($row,"-o","output_name_prefix");
+	print "\nOUTPUT FILE NAMES:\n";
+	printf($row,"-o name :","Specifies output filename prefix  (default=patches)");
+	print "\nThe output file(s) for BASIC, C, Assembly, and binary will be named as\n";
+	printf("name%s name%s, name%s, name%s (YM Patch) respectively\n",EXT_BASIC,EXT_C,EXT_ASM,EXT_BIN);
+	print "NOTE: output files are automatically overwritten if they already exist.\n";
 	print "\nOTHER:\n";
 	printf($row,"-l","<BASIC line number> : BASIC routines begin at this line number");
 	printf($row,"","(default = 10000)");
@@ -369,7 +476,7 @@ function show_format_help() {
 	print "  of each individual patch within the byte array, as well as an ENUM using the file names\n";
 	print "  used in the batch.\n\n";
 	print "ASM .BYTES:\n";
-	print "  Same as above except using labels to point at the patch bytes.\n";
+	print "  Same as above except using labels to reference each patch.\n";
 	exit(0);
 }
 

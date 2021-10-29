@@ -4,3 +4,5 @@ build/*
 *.sym
 *.o
 *.map
+tmp
+tmp2
