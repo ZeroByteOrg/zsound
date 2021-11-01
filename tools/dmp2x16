@@ -63,6 +63,8 @@ function load_patches($filelist) {
 		'data'	=> array(),	// raw binary bytes of all patches together
 		'names'	=> array()	// names of the files the patches were imported from
 	);
+	if (sizeof($filelist) == 0) { return $p; } // early exit to avoid extra output to STDOUT
+	printf ("Processing %d files...\n",sizeof($filelist));
 	foreach($filelist as $infile) {
 		$name = trim(pathinfo($infile)['filename']);
 		$ext  = trim(pathinfo($infile)['extension']);
@@ -93,14 +95,17 @@ function get_dmp_patch($filename) {
 
 	$data = array();
 
+	error_reporting(E_ALL ^ E_WARNING); // disable PHP warnings for this check...
 	$filesize = filesize($filename);
+
 	if ( $filesize > MAXSIZE ) {
 	  print "WARNING: $filename is too large to be a DMP file. (Skipping)\n";
 	  return($data);
 	}
 	$f = fopen($filename, "r");
+	error_reporting(E_ALL); 
 	if (! $f) {
-	  print "WARNING: Unable to open input file [$filename]. (Skipping)\n";
+	  print "WARNING: Unable to open input file $filename (Skipping)\n";
 	  return(array());
 	}
 	$dmp=fread($f,$filesize);
@@ -183,7 +188,9 @@ function set_outfile($filename) {
 //returns "errors_present" i.e. true if errors, false if successful
 // i.e. this boolean is shell command "exit code" mentality
 	global $OF;
+	error_reporting(E_ALL ^ E_WARNING); 
 	$OF = fopen($filename,'w');
+	error_reporting(E_ALL); 
 	if (! $OF) {
 		print "Error opening $filename for writing. Skipping.\n";
 		return(true);
@@ -327,6 +334,18 @@ function printbasic($s) {
   $basline += BASIC_STEP;
 };
 
+function glob_windows_filenames($list) {
+	$newlist = array();
+	foreach ($list as $item) {
+		$result = glob($item);
+		if (sizeof($result) > 0)
+			$newlist = $newlist + $result;
+		else
+			printf("WARNING: %s did not match any files\n",$item);
+	}
+	return($newlist);
+}
+
 function parse_cmdline_args() {
 	global $argc;
 	global $argv;
@@ -336,11 +355,13 @@ function parse_cmdline_args() {
 	$opts = getopt('hHprbBacl:o:', [], $rest_index);
 
 	if (isset($opts['h'])) {usage();}
-//	if (isset($opts['h'])) {usage();}
 	if (isset($opts['H'])) {show_format_help();}
 	
 	if (isset($argv[$rest_index])) {
 		$dmpfiles = array_slice($argv,$rest_index);
+		if(strpos(strtoupper(PHP_OS),'WIN')!==false) {
+			$dmpfiles = glob_windows_filenames($dmpfiles);
+		}
 	} else {
 		shortusage("No input files specified.");
 	}
