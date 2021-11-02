@@ -2,10 +2,12 @@
 .include "x16.inc"
 .include "zsm.inc"
 
+.import nextdata		; routine to advance the HIRAM memory pointer by 1 byte
 .export init_player
 .export playmusic
 .export startmusic
 .export stopmusic
+.export	data
 
 ZSM_HDR_SIZE	=	16	; will soon be larger
 ZSM_EOF			=	$80	; (equates to pause cmd, value=0)
@@ -163,33 +165,6 @@ die:
 ; Call once per frame - NOT FROM IRQ AS THIS ROUTINE CLOBBERS EVERYTHING
 ;
 
-
-nextdata:
-			; advance the data pointer, with bank-wrap if necessary
-			inc	data
-			beq	:+
-			rts
-			; next page
-:			lda data+1
-			inc
-			cmp	#$c0		; Check for bank wrap.
-			bcc @nobankwrap
-			; bank wrapped.
-			lda #$a0		; return to page $a000
-			inc RAM_BANK	; bank in the next RAM bank
-			inc data + SONGPTR::bank
-			
-			; TODO: Make this a cpx w/ actual # of avail banks.
-			;       (don't assume 2MB of HIRAM installed)
-			beq	@die		; out-of-memory error
-@nobankwrap:
-			sta	data+1	
-			rts
-@die:
-			; stop the music and return error (carry bit = 1)
-			jsr stopmusic
-			lda #1
-			ror
 noop:		rts
 
 delayframe:
