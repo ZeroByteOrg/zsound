@@ -11,6 +11,11 @@
 ; BGM39.ZSM uses reference pitch values for ~3.5MHz YM2151 clock.
 ; 			(Yamaha recommended value, used in r39+, Box16, and real X16 HW)
 ;
+; NOTE: This program COULD just call playmusic directly in the IRQ handler, as
+;		it does nothing in the main loop otherwise. However, as an example of using
+;		zsmplayer, it is best to go ahead and demonstrate how to properly call
+;		playmusic from the main loop, as playmusic clobbers VERA registers and
+;		is therefore unsafe to use during an IRQ.
 
 ; x16.inc by SlithyMatt - slightly modified for multi-revision support
 .include "x16.inc"		; Import X16-related symbols
@@ -25,15 +30,17 @@ ZSM_bank 	= 2			; defines starting bank in HIRAM
 .endif
 
 .segment "ONCE"	; current ca65 linker config file for cx16 requires this segment
-				; to determine the LOAD address of $801 and emit the PRG header
+				; to set the LOAD address as $801 and to emit the PRG header
 				; and BASIC stub for SYS $80D
 
 .segment "RODATA"
 
-.if X16_VERSION = 39	; set by x16.inc which defaults to 39 in this project.
-	filename:	.byte "bgm39.zsm"
-.else
+; Choose the ZSM whith the proper pitch tuning for the revision being built.
+; x16.inc sets X16_VERSION to 39 by default in this project's copy...
+.if X16_VERSION = 38
 	filename:	.byte "bgm38.zsm"
+.else
+	filename:	.byte "bgm39.zsm"
 .endif
 
 filename_len = (* - filename)
@@ -43,6 +50,7 @@ filename_len = (* - filename)
 .segment "BSS"
 
 kernal_irq:	.res	2	; storage for the previous IRQ RAM vector
+semaphore:	.res	1	; byte that signals between the IRQ and main loop
 
 ; -----------------------------------------------------------------
 
@@ -57,15 +65,26 @@ irqhandler:
 line_irq:
 			lda	#2
 			sta VERA_isr		; ACK to VERA Line IRQ
-			lda #1
-			sta VERA_dc_video	; hide layers and sprites to create "rasterbar"
-			jsr	playmusic
-			lda #$21
-			sta	VERA_dc_video	; enable L1 and VGA output to end the "rasterbar"
+			stz	semaphore
 			ply
 			plx
 			pla
 			rti
+
+; -----------------------------------------------------------------
+
+.segment	"CODE"
+			
+main:		wai					; save power :)
+			lda	semaphore
+			bne	main			; raster IRQ sets semaphore = 0. Wait for that to happen
+			lda	#1
+			sta	semaphore		; set the semaphore so the main loop only plays once per frame
+			sta	VERA_dc_video	; hide layers and sprites to create "rasterbar"
+			jsr	playmusic
+			lda	#$21
+			sta	VERA_dc_video	; enable L1 and VGA output to end the "rasterbar"
+			bra	main			; program does nothing in the main loop.
 
 ; -----------------------------------------------------------------
 
@@ -128,6 +147,7 @@ start:
 			ldx #<ZSM_address
 			ldy #>ZSM_address
 			jsr startmusic
-			
-forever:	wai			; save power :)
-			bra forever	; program does nothing in the main loop.
+
+			lda #1
+			sta	semaphore		; intilize the IRQ semaphore
+			jmp main

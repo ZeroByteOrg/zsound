@@ -1,6 +1,9 @@
 #!/usr/bin/php
 <?php
 
+// Detect if running under Windows
+define ("WINDOWS", strpos(strtoupper(PHP_OS),'WIN')!==false);
+
 // some constants related to the DMP file format.
 // (change if necessary due to changes in DMP format)
 define("MAXSIZE",0x33);
@@ -16,7 +19,11 @@ define ("EXT_BASIC", '.bas');
 define ("EXT_C", '.h');
 define ("EXT_BIN", '.YMP');
 
-define ("USAGE","$argv[0] [-hHprbac] [-l <BASIC line number>] [-o output_name_prefix] file1 [file2] [...]");
+// constants for BASIC output
+define ("VARNAME","CH");	// name of BASIC variable that chooses voice#
+define ("BASIC_STEP",1);	// how much to step the BASIC line numbers
+
+define ("USAGE","$argv[0] [-h] [-H] [-l <BASIC line number>] [-o output_name_prefix] -{format(s)} file1 [file2] [...]");
 
 global $OF;
 
@@ -346,6 +353,16 @@ function glob_windows_filenames($list) {
 	return($newlist);
 }
 
+function deduplicate($files) {
+	if (WINDOWS)
+		return array_intersect_key(
+			$files,
+			array_unique( array_map( "strtolower", $files ) )
+		);
+	else
+		return array_unique($files);
+}
+
 function parse_cmdline_args() {
 	global $argc;
 	global $argv;
@@ -356,12 +373,14 @@ function parse_cmdline_args() {
 
 	if (isset($opts['h'])) {usage();}
 	if (isset($opts['H'])) {show_format_help();}
+	if ($argc < 2) {shortusage();}
 	
 	if (isset($argv[$rest_index])) {
 		$dmpfiles = array_slice($argv,$rest_index);
-		if(strpos(strtoupper(PHP_OS),'WIN')!==false) {
+		if(WINDOWS) {
 			$dmpfiles = glob_windows_filenames($dmpfiles);
 		}
+		$dmpfiles = deduplicate($dmpfiles);
 	} else {
 		shortusage("No input files specified.");
 	}
@@ -405,8 +424,6 @@ function parse_cmdline_args() {
 		else { 
 			define("YMBASE",YMBASE_R38);
 		}
-		define ("VARNAME","CH");
-		define ("BASIC_STEP",1);
 	} else {
 		define("OUT_BASIC",false);
 	}
@@ -417,18 +434,20 @@ function parse_cmdline_args() {
 		define("OUT_C",false);
 	}
 	
-	if (! (OUT_ASM || OUT_BASIC || OUT_BIN || OUT_C)) {
+	if ((OUT_ASM || OUT_BASIC || OUT_BIN || OUT_C)===false) {
 		shortusage("No output format selected.");
 	}
 	
 	return($dmpfiles);
 }
 
-function shortusage($message) {
+function shortusage($message = "") {
 	global $argv;
 	print "\nUSAGE:\n";
 	print "  " . USAGE . "\n";
 	print "  $argv[0] -h for more help.\n\n";
+	print "FORMATS:\n  One or more of the following: -a -b -B -c -p -r\n";
+	print "  ($argv[0] -h for more details)\n\n";
 	if (strlen($message) > 0) {
 		print "ERROR:\n  $message\n\n";
 	}
@@ -447,7 +466,6 @@ function usage() {
 	print "instrument. All valid instruments will be output combined into a single file";
 	print "for each activated output format.\n";
 	print "\nUSAGE:\n";
-//	printf($row,"$argv[0] [-hHprbac] [-l <BASIC line number>] [-o output_name_prefix] file1 [file2] [...]","\n");
 	print USAGE . "\n";
 	printf($row,"-h :","This help information.");
 	printf($row,"-H :","Show help about using the output data format.");
@@ -489,7 +507,7 @@ function show_format_help() {
 	print '    $20,$38,$40,$48,$50,$58,$60,$68,$70,$78 ... ,$E8,$F0,$F8'."\n";
 	print "    (note that $28 and $30 are SKIPPED)\n";
 	print "  To patch the YM on any voice, adjust the above addresses += voice_number\n";
-	print '    - e.g.: $23,$3B,$43,$4B,$58,$5B,... for voice 3 (voices range 0-7)' . "\n\n";
+	print "    - e.g.: $23,$3B,$43,$4B,$58,$5B,... for voice 3 (voices range 0-7)\n\n";
 	print "C ARRAY:\n";
 	print "  Each input file will result in an array of 26 bytes in the BINARY's arrangement.\n";
 	print "  Array names will be YMP_<filename> based on the name of the input file (with DMP removed)\n";

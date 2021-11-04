@@ -4,11 +4,9 @@
 .export		nextdata
 
 .segment	"ZEROPAGE"
-
 .import		data
 
 .segment	"CODE"
-
 .import		stopmusic
 
 .proc nextdata: near

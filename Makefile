@@ -25,13 +25,16 @@ REVFLAGS	= --asm-define REV=$(REV)
 
 SRCS := $(shell find $(SRC_DIRS) -name \*.asm)
 #SRCS := $(shell find $(SRC_DIRS) -name \*.c)
-OBJS := $(addsuffix .o,$(basename $(SRCS)))
-DEPS := $(OBJS:.o=.d)
+OBJLIST := $(addsuffix .o,$(basename $(SRCS)))
+OBJ38	:= $(addprefix $(BUILDDIR)/r38_,$(OBJLIST))
+OBJ39	:= $(addprefix $(BUILDDIR)/r39_,$(OBJLIST))
+OBJS	:= $(OBJ38) $(OBJ39)
+DEPS := $(OBJLIST:.o=.d)
 
 INC_DIRS := $(shell find $(SRC_DIRS) -type d)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
-$(LIBRARY): objclean $(OBJS)
+$(LIBRARY): $(OBJS)
 	$(AR) a $@ $(OBJS)
 
 .PHONY: lib

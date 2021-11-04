@@ -7,10 +7,10 @@ BGM39.ZSM depending on which emulator revision it was built for.
 Building:
 
 x16emu (r38):
-cl65 -t cx16 --asm-define REV=38 -L ../../lib --asm-include-dir ../..inc -o SIMPLEPLAYER.PRG simpleplayer.asm zsound39.lib
+cl65 -t cx16 --asm-define REV=38 -L ../../lib --asm-include-dir ../../inc -o SIMPLEPLAYER.PRG simpleplayer.asm zsound39.lib
 
 x16emu (r39), Box16, or real HW:
-cl65 -t cx16 -L ../../lib --asm-include-dir ../..inc -o SIMPLEPLAYER.PRG simpleplayer.asm zsound39.lib
+cl65 -t cx16 -L ../../lib --asm-include-dir ../../inc -o SIMPLEPLAYER.PRG simpleplayer.asm zsound39.lib
 
 
 Running:
