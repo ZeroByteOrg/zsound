@@ -5,6 +5,8 @@
 ; symbols were exported as e.g. data38 or data39. Import the appropriate
 ; one, and alias it with data := data38...
 
+;.define	DATA	= .ident(.sprintf("%s%d","data",X16_VERSION)
+
 ; data is a zeropage symbol, so import it in that segment....
 .segment "ZEROPAGE"
 .import	.ident(.sprintf("%s%d","data",X16_VERSION))
