@@ -2,12 +2,27 @@
 .include "x16.inc"
 .include "zsm.inc"
 
-.import nextdata		; routine to advance the HIRAM memory pointer by 1 byte
-.export init_player
-.export playmusic
-.export startmusic
-.export stopmusic
-.export	data
+
+; import revision-suffixed symbols
+.import	.ident(.sprintf("%s%d","nextdata",X16_VERSION))
+
+; alias them with the revision suffixes stripped
+nextdata	:=	.ident(.sprintf("%s%d","nextdata",X16_VERSION))
+
+; create revision-suffixed identifiers for the symbols being exported
+; e.g. init_player38 := init_player
+.ident(.sprintf("%s%d","init_player",X16_VERSION)) := init_player
+.ident(.sprintf("%s%d","playmusic",X16_VERSION)) := playmusic
+.ident(.sprintf("%s%d","startmusic",X16_VERSION)) := startmusic
+.ident(.sprintf("%s%d","stopmusic",X16_VERSION)) := stopmusic
+.ident(.sprintf("%s%d","data",X16_VERSION)) := data
+
+; export the revision-suffixed symbols
+.export	.ident(.sprintf("%s%d","init_player",X16_VERSION))
+.export	.ident(.sprintf("%s%d","playmusic",X16_VERSION))
+.export	.ident(.sprintf("%s%d","startmusic",X16_VERSION))
+.export	.ident(.sprintf("%s%d","stopmusic",X16_VERSION))
+.export	.ident(.sprintf("%s%d","data",X16_VERSION))
 
 ZSM_HDR_SIZE	=	16	; will soon be larger
 ZSM_EOF			=	$80	; (equates to pause cmd, value=0)
@@ -246,4 +261,3 @@ loopsong:
 			lda	loop_pointer + SONGPTR::addr+1
 			sta	data + SONGPTR::addr+1
 			jmp	nextnote
-

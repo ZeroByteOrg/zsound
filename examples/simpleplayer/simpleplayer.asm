@@ -150,4 +150,5 @@ start:
 
 			lda #1
 			sta	semaphore		; intilize the IRQ semaphore
+			jsr	helloworld
 			jmp main

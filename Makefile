@@ -6,7 +6,7 @@ REV		= 38
 
 LIB38	?= lib/zsound38.lib
 LIB39	?= lib/zsound39.lib
-LIBRARY ?= lib/zsound$(REV).lib
+LIBRARY ?= lib/zsound.lib
 
 
 EXEC ?= TEST.PRG
@@ -21,14 +21,16 @@ FLAGS		= -t cx16 -g
 CFLAGS		= $(FLAGS) -O $(INC_FLAGS)
 ASFLAGS		= $(FLAGS) -c
 LDFLAGS		= $(FLAGS) -C zsound.cfg -u __EXEHDR__ -o
-REVFLAGS	= --asm-define REV=$(REV)
+REV38		= --asm-define REV=38
+REV39		= --asm-define REV=39
 
 SRCS := $(shell find $(SRC_DIRS) -name \*.asm)
 #SRCS := $(shell find $(SRC_DIRS) -name \*.c)
 OBJLIST := $(addsuffix .o,$(basename $(SRCS)))
-OBJ38	:= $(addprefix $(BUILDDIR)/r38_,$(OBJLIST))
-OBJ39	:= $(addprefix $(BUILDDIR)/r39_,$(OBJLIST))
+OBJ38	:= $(addsuffix 38,$(OBJLIST))
+OBJ39	:= $(addsuffix 39,$(OBJLIST))
 OBJS	:= $(OBJ38) $(OBJ39)
+#OBJS	:= $(OBJLIST)
 DEPS := $(OBJLIST:.o=.d)
 
 INC_DIRS := $(shell find $(SRC_DIRS) -type d)
@@ -44,8 +46,11 @@ lib: $(LIBRARY)
 #	REV	=	39
 #	make $(LIB39)
 
-src/%.o: src/%.asm
-	$(AS) $(ASFLAGS) $(REVFLAGS) -o $@ $<
+src/%.o38: src/%.asm
+	$(AS) $(ASFLAGS) $(REV38) -o $@ $<
+
+src/%.o39: src/%.asm
+	$(AS) $(ASFLAGS) $(REV39) -o $@ $<
 
 .PHONY: clean
 clean:
