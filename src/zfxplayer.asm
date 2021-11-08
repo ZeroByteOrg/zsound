@@ -5,7 +5,7 @@
 
 ; create revision-suffixed identifiers for the symbols being exported
 ; e.g. symbol38 := symbol
-.ident(.sprintf("%s%d","playzfx",X16_VERSION)) := playmusic
+.ident(.sprintf("%s%d","playzfx",X16_VERSION)) := playzfx
 
 ; export the revision-suffixed symbols
 .export	.ident(.sprintf("%s%d","playzfx",X16_VERSION))

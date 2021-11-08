@@ -215,16 +215,13 @@ nextnote:
 			bit #$40			; 2
 			bne YMPCM			; 
 playPSG:						; 2
-			tax
+			clc					; 2
+			adc #$c0			; 2		; ...to offset it properly into VRAM location
+			sta VERA_addr_low	; 4		; VERA data0 now points at selected PSG register
 			jsr nextdata		; +X
 			lda (data)			; 5		; get the value for writing into PSG
-			tay					; 2
+			sta VERA_data0		; 4		; ... and write it.
 			jsr nextdata		; +X
-			txa					; 2		; put the register number into A....
-			clc					; 2
-			adc #$c0			; 		; ...to offset it properly into VRAM location
-			sta VERA_addr_low	; 4
-			sty VERA_data0		; 4
 			bra nextnote		; 3
 
 YMPCM:							; 3
