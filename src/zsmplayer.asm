@@ -243,6 +243,11 @@ nextYM:
 			bra nextYM		; 3
 PCMcommand:
 			jsr nextdata
+			; PCM commands are 4 bytes. Skip for now.
+			jsr nextdata
+			jsr nextdata
+			jsr nextdata
+			jsr nextdata
 			rts				; no PCM commands defined yet...
 
 loopsong:
