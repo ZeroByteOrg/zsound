@@ -25,6 +25,14 @@ vgm2zsm:
 	(Apologies in advance for the sapghetti code - this script grew
 	from a simple single-purpose function and really needs to be
 	rewritten from scratch)
+
+zsm2sfx:
+	Currently broken - this tool is intended to be part of an admittely
+	convoluted workflow whereby FM-based SFX are created in Deflemask,
+	exported as VGM, then converted to ZSM using vgm2zsm, and finally
+	using this tool to strip down the ZSM into the bare minimum number
+	of writes needed to play the sound - the SFX format is different than
+	the ZSM format.
 	
 Windows PHP:
 

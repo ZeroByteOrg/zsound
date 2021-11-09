@@ -1,0 +1,104 @@
+#!/usr/bin/php
+<?php
+
+// NOTE - this script is outdated, as it was made for the original ZSM format
+// which has been updated significantly.
+//
+// TODO: Update this script to support current ZSM spec.
+//
+
+/* This script is for use on ZSM streams in order to convert them into SFX-style
+ * formatting instead of music-style formatting. SFX stream format is very bare-bones:
+ * 
+ * {reg} {val} {pause} {reg} {val} {pause} ...
+ *
+ * pause value of $00 = continue playing w/o delay (obviously) but pause bytes
+ * 			are required, even if zero.
+ *
+ * pause value of $FF = end of data
+ *
+ * The stream contains no header info or command frames for multiplexing FM and PSG
+ * sound commands. This script assumes FM for the moment, but could easily encorporate
+ * both styles.
+ *
+ * The SFX stream MUST be made for only one type of data.
+ * FM-based SFX should only use one channel of FM.
+ *
+ * The script was written to tidy up the output from Deflemask-based VGMs which have
+ * tons of crazy extra stuff thrown in there. The intended workflow is:
+ * 1) make sound in Deflemask (or at least the instrument)
+ * 2) export as VGM
+ * 3) convert to ZSM using vgm2zsm
+ * 4) use this script to convert the ZSM into simple 3-bytes-per-row text format.
+ *
+ * The output is intended for use as include file material (.byte r, v, p)
+ * but can also be converted into C-style static array definitions for #include, etc.
+*/
+
+
+if (isset($argv[1]))
+	define("FILENAME", $argv[1]);
+else
+	define("FILENAME", 'kenstage.vgm');
+
+$filesize=filesize(FILENAME);
+$f = fopen(FILENAME, "r");
+$binary=fread($f,$filesize);
+fclose($f);
+
+$zsm=unpack(sprintf('C%d',$filesize),$binary);
+
+$zsm = array_values($zsm);
+
+$shadow = array (0x20 => 999, 0x28 => 999, 0x30 => 999, 0x38 => 999);
+for ($i = 0x40 ; $i <= 0xe0 ; $i += 0x20) {
+	$shadow[$i] = 999;
+	$shadow[$i+0x08] = 999;
+	$shadow[$i+0x10] = 999;
+	$shadow[$i+0x18] = 999;
+}
+
+$i = 18; // skip ZSM header bytes
+
+$pause = -1;
+while ($i < $filesize) {
+	switch ($zsm[$i]) {
+	case 0:
+		$i++;
+		if ($pause >= 0) {$pause += $zsm[$i];}
+		$i++;
+		break;
+	case 1:
+		$r = $zsm[++$i];
+		$v = $zsm[++$i];
+		$i++;
+		if (array_key_exists($r,$shadow)) {
+			if ($shadow[$r] != $v) {
+				if ($pause >= 0) {
+					printf(", \$%02x\n",$pause);
+				}
+				$pause = 0;
+				printf("\$%02x, \$%02x",$r,$v);
+				$shadow[$r] = $v;
+			}
+		} else if($r == 0x08) {
+			if ($pause >= 0) {
+				printf(", \$%02x\n",$pause);
+			}
+			$pause = 0;
+			printf("\$08, \$%02x",$v);
+		}
+		break;
+	case 0xff:
+		$i = $filesize;
+		printf (", \$%02x\n",$pause);
+		print "EOF\n";
+		break;
+	default:
+		print "We've gone off the rails!!!\n";
+		exit;
+		break;
+	}
+}
+
+?>
