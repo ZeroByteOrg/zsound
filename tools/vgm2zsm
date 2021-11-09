@@ -728,7 +728,7 @@ $totalticks=0;
 $longest=0;
 $maxatbyte=0;
 
-define (HDRSIZE,16);
+define ("HDRSIZE",16);
 //$songdata=array(0,0,0xff);
 $songdata=array_fill(0,HDRSIZE,0); // create an array 0..HDRSIZE of zeros
 $songdata[2] = 0xff; // set the "bank" value of the loop pointer to FF (no loop by default)
