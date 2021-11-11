@@ -12,10 +12,10 @@ LIBRARY ?= lib/zsound.lib
 EXEC ?= TEST.PRG
 SRC_DIRS ?= ./src
 
-CC		= /usr/local/bin/cl65
-AS		= /usr/local/bin/cl65
-LD		= /usr/local/bin/cl65
-AR		= /usr/local/bin/ar65
+CC		= cl65
+AS		= cl65
+LD		= cl65
+AR		= ar65
 
 FLAGS		= -t cx16 -g
 CFLAGS		= $(FLAGS) -O $(INC_FLAGS)
@@ -59,7 +59,7 @@ clean:
 .PHONY: objclean
 objclean:
 	$(RM) $(OBJS)
-	
+
 .PHONY: test
 test: $(EXEC)
 

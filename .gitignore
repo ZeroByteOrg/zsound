@@ -8,3 +8,6 @@ tmp
 tmp2
 tmp3
 .~lock.*
+*.lib
+*.o38
+*.o39
