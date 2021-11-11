@@ -1,6 +1,37 @@
 #!/usr/bin/php
 <?php
 
+/*
+ * This tool is used to convert VGM files into ZSM files.
+ * 
+ * First - Apologies for the spaghetti code. This tool was originally
+ * written to simply extract 0x54 commands from a VGM and write out
+ * a binary stream for testing the YM2151 on 8MHz system bus speeds with
+ * Kevin on prototype board 1.
+ * 
+ * It was not written to be extended for additional functionality. I just
+ * shoehorned it in there, and in ever-increasingly sloppy fashion which
+ * causes lots of strange logic. It's best not to try to grok() this code.
+ * Just use it and move along. (Nothing to see here)
+ * 
+ * Usage - the script has two command-line options:
+ * 	-4: this flag causes the script to generate YM notes based on a
+ * 		4MHz clock (r38 and older emulator versions).
+ * 
+ *  -b: "black tiger mode" - Most YM2203 tunes seem to use a regime of
+ *		the clock scaler registers that use this clock speed conversion.
+ * 		The YM2203 support was originally written in for the City Connection
+ * 		project, and those tunes use different clock scaler values. As I haven't
+ * 		figured out how to properly interpret those, I just added this switch
+ * 		with the intent of fixing the clock speed interpretation in the actual
+ * 		code. I haven't done this. It's manual. Sorry.
+ * 
+ * I ultimately intend to rewrite this tool using Python, and when doing so, the
+ * new script should be much more extensible than this one was. Oh well. Too bad
+ * I'm not a Python guy though....
+ * 
+*/
+
 $rest_index = null;
 $opts = getopt('4b', [], $rest_index);
 $filenames = array_slice($argv, $rest_index);
@@ -8,7 +39,11 @@ $filenames = array_slice($argv, $rest_index);
 if (isset($filenames[0]))
 	define("FILENAME", $filenames[0]);
 else
-	define("FILENAME", 'kenstage.vgm');
+{
+	print "You must specify an input filename.\n";
+	exit(1);
+}
+
 define("OFFSET", 0x34);
 define("MAXPAUSE",0x7F); // testing whether any pause frames of $7F exist.
 //define("MAXPAUSE",0x7E); // pause of 0x7e = end of data stream
@@ -16,8 +51,10 @@ define("PERLINE",16); // # of data bytes to print per line
 define("TICKSPERFRAME",735);
 if (isset($filenames[1]))
 	define ("OUTFILENAME", $filenames[1]);
-else
-	define("OUTFILENAME", 'BGM.ZSM');
+else {
+	$parts = pathinfo($filenames[0]);
+	define("OUTFILENAME", $parts['dirname'] . '/' . $parts['filename'] . '.zsm' );
+}
 
 $commands=array(
   0x63 => 0,	// delay 0x0000
@@ -28,6 +65,8 @@ $commands=array(
 // For R39, use the 3.5MHz table (name it as $note)
 
 // C#,D,D#,x,E,F,F#,x,G,G#,A,x,A#,B,C
+
+/*
 if (isset($opts['4'])) {
 $note = array( // values for when YM2151 is at 4MHz
 	311.13, 329.63, 349.23, 0,  // c# d  d#  x
@@ -42,6 +81,14 @@ $note = array( // values for when YM2151 is at 3.5MHz
 	392.00, 415.30, 440.00, 0,  // g  g# a   x
 	466.16, 493.88, 523.25, 0); // a# b  c   x
 }
+*/
+
+$note = array( // values for when YM2151 is at 3.5MHz
+	277.18, 293.66, 311.13, 0,  // c# d  d#  x
+	329.63, 349.23, 369.99, 0,  // e  f  f#  x
+	392.00, 415.30, 440.00, 0,  // g  g# a   x
+	466.16, 493.88, 523.25, 0); // a# b  c   x
+
 
 // LUT for converting AY volume register into VERA PSG equivalent %max
 $PSGvolume = array( 0,1,2,3,4,8,12,16,24,28,34,40,45,51,58,63);
@@ -108,56 +155,22 @@ function tobin($val) {
 	return $s;
 }
 
+define("YM_UP",1);
+define("YM_DN",-1);
+function YM_transpose($kc, $direction) {
+	$kc = $kc + $direction;
+	if (abs($kc % 4) == 3) $kc = $kc + $direction; // skip invalid KC values
+	$kc = $kc + $direction;
+	if (abs($kc % 4) == 3) $kc = $kc + $direction; // skip invalid KC values
+	if ($kc < 0) $kc = 0;
+	if ($kc > 0xff) $kc = 0xff;
+	return($kc);
+}
 
 // --------- above is the set of LUTs / magic numbers I used for OPL->OPM freq. conversion.
 
 
 $opnfreqs = array( 0x80, 0x80, 0x80, 0x80, 0x80, 0x80 ); // 0x80 is an invalid value used as a flag indicating "not set"
-
-//$segafreqs = array ( 617, 653, 692, 733, 777, 823, 872, 924, 979, 1037, 1099, 1164 );
-////$segafreqs = array ( 644, 682, 723, 766, 811, 859, 910, 965, 1022, 1083, 1147, 1215 ); // Deflemask uses these values for KC
-
-//$kc = array ( 0xe, 0, 1, 2, 4, 5, 6, 8, 9, 0xa, 0xc, 0xd ); // do the above notes even map the same way? Nobody even says....
-
-
-function writepause1() {
-  global $songdata;
-  global $ticks;
-  global $bytes;
-  
-  $frames = intdiv($ticks,TICKSPERFRAME);
-  $ticks  = $ticks % TICKSPERFRAME;
-  while ($frames >= MAXPAUSE) {
-	  array_push($songdata,0,MAXPAUSE);
-	  $frames -= MAXPAUSE;
-	  $bytes  += 2;
-  }
-  if ($frames > 0) {
-	array_push($songdata,0,$frames);
-	$bytes += 2;
-  }
-}
-
-function generate1($c, $a, $d) {
-	global $songdata;
-	global $ticks;
-	global $totalticks;
-	global $longest;
-	global $bytes;
-	global $maxatbyte;
-	global $i;
-
-	writepause();
-	$totalticks += $ticks;
-	if ($ticks > $longest) {
-		// track what the longest pause was over the entire stream
-		$longest = $ticks;
-		$maxatbyte = $i-3;
-	};
-	array_push($songdata,$c,$a,$d);
-	$bytes += 3;
-if ($c == 2) { printf("ZSM WRITE: 0x02 0x%02x 0x%02x\n",$a,$d); }
-};
 
 function flushymbuffer() {
   global $songdata;
@@ -209,6 +222,8 @@ function writepause() {
 }
 
 function generate($c, $a, $d) {
+	global $opts;
+	global $channelsused;
 	global $songdata;
 	global $ticks;
 	global $totalticks;
@@ -226,13 +241,27 @@ function generate($c, $a, $d) {
 	}
 	writepause();
 	switch ($c) {
-	case 1:
+	case 1:	// buffer writes to the YM
+		if ($a >= 0x20) {
+			// naive method for this. Real method would be a 2-pass process which only
+			// flags a channel as "used" if a keyDN event takes place on the channel,
+			// and then filters out all writes to unused channels.
+			$channelsused['ym'] |= 1 << ( $a % 8 );
+		} else if ( $a == 0x08 ) {
+			$channelsused['ym'] |= 1 << ( $d % 8 );
+		}
+		if (($a & 0xf8) == 0x28) { // if writing a KC value....
+			if (isset($opts['4'])) {
+				$d = YM_transpose($d,YM_DN);
+			}
+		}
 		array_push($ymbuffer,$a,$d);
 		break;
-	case 2:
+	case 2: // immediately write out PSG commands
+		$channelsused['psg'] |= 1 << intdiv( $a, 4 ); # update the PSG channel mask
 		array_push($songdata,$a,$d);
 		$bytes += 2;
-printf("ZSM WRITE: 0x02 0x%02x 0x%02x\n",$a,$d);
+printf("ZSM WRITE: 0x%02x 0x%02x\n",$a,$d);
 		break;
 	default:
 		printf("Illegal command ID %d written at VGM offset 0x%06x\n",$c,$i);
@@ -271,10 +300,17 @@ function out_asm()
 function out_zsm($ofile)
 {
 	global $songdata;
+	global $channelsused;
+	$songdata[6] = $channelsused['ym'];
+	$songdata[7] = $channelsused['psg'] & 0xff;
+	$songdata[8] = $channelsused['psg'] >> 8;
+printf("YM channel mask: %s\n", tobin($channelsused['ym']));
+printf("PSG channel mask: %s\n", tobin($channelsused['psg']));
 	$of = fopen($ofile, "w+b");
 	fwrite($of,"zm");
 	fwrite($of,pack('C*',...$songdata));
 	fclose($of);
+	
 }
 
 function translate_sn($d)
@@ -688,6 +724,13 @@ $opnclock += $vgm[0x46] << 16;
 $opnclock += $vgm[0x47] << 24;
 $opnclock &= 0xbfffffff; // bit 30 = dual chip flag. Ignore it.
 
+$opmclock = 0;
+$opmclock += $vgm[0x30];
+$opmclock += $vgm[0x31] << 8;
+$opmclock += $vgm[0x32] << 16;
+$opmclock += $vgm[0x33] << 24;
+$opmclock &= 0xbfffffff; // bit 30 = dual chip flag. Ignore it.
+
 $opn2clock = 0;
 $opn2clock += $vgm[0x2c];
 $opn2clock += $vgm[0x2d] << 8;
@@ -734,6 +777,8 @@ $songdata=array_fill(0,HDRSIZE,0); // create an array 0..HDRSIZE of zeros
 $songdata[2] = 0xff; // set the "bank" value of the loop pointer to FF (no loop by default)
 $ymbuffer=array();
 
+$channelsused=array('ym'=>0, 'psg'=>0); // bitflags for channels used by the VGM
+
 $bytes=0;
 
 $notecount=array();
@@ -773,6 +818,11 @@ while ($i < EOF) {
 	$a = $vgm[$i];
 	$d = $vgm[$i+1];
 	$i += 2;
+	if (($a & 0xf8) == 0x28) { // if writing a KC value....
+		if ($opmclock == 4000000) {
+			$d = YM_transpose($d, YM_UP);
+		}
+	}
 	//printf("[%6x] {%5d} YM A:%2x D:%2x\n",$i-3,$ticks,$a,$d);
 	if ($a == 0x14) { $d = $d & 0xf3; } // filter out IRQ enable bits
 	generate(1,$a,$d);
