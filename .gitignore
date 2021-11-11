@@ -6,4 +6,5 @@ build/*
 *.map
 tmp
 tmp2
+tmp3
 .~lock.*
