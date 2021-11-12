@@ -2,6 +2,23 @@
 <?php
 
 /*
+$note = array( // values for when YM2151 is at 3.5MHz
+	277.18, 293.66, 311.13, 0,  // c# d  d#  x
+	329.63, 349.23, 369.99, 0,  // e  f  f#  x
+	392.00, 415.30, 440.00, 0,  // g  g# a   x
+	466.16, 493.88, 523.25, 0); // a# b  c   x
+
+
+$kc = getcode_kf($argv[1]);
+$kf = $kc >> 8;
+$kc = $kc & 0xff;
+
+printf("KC:0x%02x KF:0x%02x\n",$kc,$kf);
+exit;
+*/ 
+
+
+/*
  * This tool is used to convert VGM files into ZSM files.
  * 
  * First - Apologies for the spaghetti code. This tool was originally
@@ -33,7 +50,7 @@
 */
 
 $rest_index = null;
-$opts = getopt('4b', [], $rest_index);
+$opts = getopt('4bf', [], $rest_index);
 $filenames = array_slice($argv, $rest_index);
 
 if (isset($filenames[0]))
@@ -119,7 +136,58 @@ function snfnum($ayfnum) {
 	return round($freq / 0.37252903, 0, PHP_ROUND_HALF_UP);
 }
 
-function getcode ($freq) {
+function getcode_kf1 ($freq) {
+	global $note;
+	
+	$newoct = 0;
+	$newkc = 0;
+	$oct = 0;
+	$kc = 0;
+	do {
+		$oct = $newoct;
+		$kc = $newkc;
+		$newkc++;
+		if ($newkc % 4 == 3) $newkc++;
+		if ($newkc > 0x0f) {
+			if ($newoct == 7) return(0x7e); // $freq > OPM's max freq. Just return max.
+			$newoct++;
+			$newkc -= 0x0f;
+		}
+printf("Newoct: %d\nNewKC : %d\n",$newoct, $newkc);
+		$fnext = freq($newoct, $newkc);
+	} while ($fnext <= $freq);
+	// $oct,$kc are now the highest code that is <= target frequency.
+	$f = freq($oct,$kc);  // set $f to be the freq of this code.
+	$cent = ($fnext - $f) / 64.0;  // Hz value of one cent in this range.
+	$kf = floor(($freq-$f)/$cent);
+	return ( ($kf << 8) | ($oct << 4) | $kc );
+};
+
+function getcode_kf($freq) {
+	$kc = getcode_kc($freq);
+	$f = freq($kc>>4,$kc & 0xf);
+	$nextkc = $kc+1;
+	if ($nextkc % 4 == 3) $nextkc++;
+	if ($nextkc > 0xff) {
+		$nextkc = $kc-1;
+		if ($nextkc % 4 == 3) $nextkc--;
+	}
+	
+	// don't bother with KF past the ends of the range...
+	if (($kc == 0x00) && ($f > $freq)) return($kc);
+	if (($kc == 0x7f) && ($f < $freq)) return($kc);
+	$f1 = freq($nextkc>>4,$nextkc & 0x0f);
+	$range = abs($f1 - $f);
+	$cent = $range/32;
+	$err = $freq - $f;
+	$kf = floor( $err/$range * $cent) << 2;
+printf ("freq : %f\n   f : %f\n  f1 : %f\ncent : %f\n",$freq,$f,$f1,$cent);
+	return ((($kf & 0xfc)<<8) | $kc);
+}
+
+
+function getcode_kc($freq) {
+	// returns nearest semitone-resolution match. (doesn't generate KF writes)
 	global $note;
 	$ymoct = 0;
 	$ymc = 0;
@@ -140,9 +208,15 @@ function getcode ($freq) {
 		};
 		$ymoct++;
 	};
-//	printf("0x%04x", ($bestC & 0x0f) | ($bestOct << 4)); // omit DT for now.
-	return (($bestC & 0x0f) | ($bestOct << 4));
+	$kc = ($bestC & 0x0f) | ($bestOct << 4);
+	return ($kc);
 };
+
+function getcode($freq) {
+	global $opts;
+	if (isset($opts['f'])) return(getcode_kf($freq));
+	return(getcode_kc($freq));
+}
 
 // prints out 8 binary bits as 1s and 0s.
 function tobin($val) {
@@ -648,6 +722,10 @@ function translate_opn($a, $d, $base, $ofst)
 printf("note: ch=%d f=%d oct=%d : pitch=%2f\n",$cha,$f,($oct>>4),$pitch);
 				$a = 0x28 + $cha;
 				$d = getcode($pitch);
+				if ($d > 0xff) { // if getcode returned a KF value in bits 8-15
+					generate(1,$cha+0x30,$d >> 8);
+				}
+				$d &= 0xff; // mask off any KF value
 				$opnfreqs[$cha] = 0x80;
 			}
 			else {

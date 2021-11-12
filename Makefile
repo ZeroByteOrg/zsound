@@ -4,18 +4,17 @@
 
 REV		= 38
 
-LIB38	?= lib/zsound38.lib
-LIB39	?= lib/zsound39.lib
-LIBRARY ?= lib/zsound.lib
+LIBDIR	?= lib
+LIBRARY ?= $(LIBDIR)/zsound.lib
 
 
 EXEC ?= TEST.PRG
 SRC_DIRS ?= ./src
 
-CC		= /usr/local/bin/cl65
-AS		= /usr/local/bin/cl65
-LD		= /usr/local/bin/cl65
-AR		= /usr/local/bin/ar65
+CC		= cl65
+AS		= cl65
+LD		= cl65
+AR		= ar65
 
 FLAGS		= -t cx16 -g
 CFLAGS		= $(FLAGS) -O $(INC_FLAGS)
@@ -37,14 +36,11 @@ INC_DIRS := $(shell find $(SRC_DIRS) -type d)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 $(LIBRARY): $(OBJS)
+	@[ -d $(LIBDIR) ] || mkdir -p $(LIBDIR)
 	$(AR) a $@ $(OBJS)
 
 .PHONY: lib
 lib: $(LIBRARY)
-#	REV	=	38
-#	make $(LIB38)
-#	REV	=	39
-#	make $(LIB39)
 
 src/%.o38: src/%.asm
 	$(AS) $(ASFLAGS) $(REV38) -o $@ $<
