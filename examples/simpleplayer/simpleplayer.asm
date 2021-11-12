@@ -24,6 +24,10 @@
 ZSM_address = $A000		; memory address to load song (should be in HIRAM bank window)
 ZSM_bank 	= 2			; defines starting bank in HIRAM
 
+BAR_VISIBLE_MODE	= $31
+BAR_HIDDEN_MODE		= $11
+RASTER_LINE_TOP		= 0	; first visible row of pixels?
+
 
 .ifndef X16_VERSION
 	.error	"x16.inc must not have been included successfully."
@@ -78,13 +82,96 @@ line_irq:
 main:		wai					; save power :)
 			lda	semaphore
 			bne	main			; raster IRQ sets semaphore = 0. Wait for that to happen
-			lda	#1
+			lda	#BAR_VISIBLE_MODE
 			sta	semaphore		; set the semaphore so the main loop only plays once per frame
-			sta	VERA_dc_video	; hide layers and sprites to create "rasterbar"
+			sta	VERA_dc_video	; display L1 for a visible performance meter bar
 			jsr	playmusic
-			lda	#$21
+			lda	#BAR_HIDDEN_MODE
 			sta	VERA_dc_video	; enable L1 and VGA output to end the "rasterbar"
 			bra	main			; program does nothing in the main loop.
+			
+; -----------------------------------------------------------------
+
+; SWAPLAYER: Switch to using L0 as the active screen. Clear space at VRAM $4000
+;				to use as the L1 tilemap
+
+.segment	"CODE"
+			
+.proc swaplayer: near
+			stz VERA_ctrl			; use data port=0 and DCSEL=0
+			VERA_SET_ADDR	$4000,1	; vram $4000, stride 1
+			lda #32					; blank space for clearing new screen memory
+			ldx #0					; be sure X starts at 0
+			ldy	#$40				; clear $40 pages of VRAM
+nextbyte:	sta	VERA_data0
+			dex
+			stz	VERA_data0			; set attr byte to 0 for each screen location
+			dex
+			bne	nextbyte
+			dey
+			bne	nextbyte			; next page of VRAM
+			
+			; now copy L1 config to L0
+			ldx #6
+nextattr:	lda VERA_L1_config,X
+			sta VERA_L0_config,X
+			dex
+			bpl	nextattr
+			; set L1 to use VRAM base $4000
+			lda #$20
+			sta	VERA_L1_mapbase
+			; enable L0, disable sprites
+			lda	#BAR_HIDDEN_MODE
+			sta	VERA_dc_video
+			rts
+.endproc
+
+; -----------------------------------------------------------------
+
+; DRAWMETER: Draw the performance bar on the screen to L1
+;		
+
+.segment	"CODE"
+			
+.proc drawmeter: near
+			
+COL = 76
+			stz VERA_ctrl	; use data port 0, DCSEL=0
+			VERA_SET_ADDR	($4000 + 2*COL), 9	; stride down on screen
+			lda #1
+			sta VERA_ctrl	; set data port 1
+			VERA_SET_ADDR	($4001 + 2*COL), 9	; data1 for attribute bytes
+			jsr	drawcolumn
+			stz VERA_ctrl	; use data port 0, DCSEL=0
+			VERA_SET_ADDR	($4000 + 2*(COL+1)), 9	; stride down on screen
+			lda #1
+			sta VERA_ctrl	; set data port 1
+			VERA_SET_ADDR	($4001 + 2*(COL+1)), 9	; data1 for attribute bytes
+			jsr	drawcolumn
+			stz VERA_ctrl	; use data port 0, DCSEL=0
+			VERA_SET_ADDR	($4000 + 2*(COL+2)), 9	; stride down on screen
+			lda #1
+			sta VERA_ctrl	; set data port 1
+			VERA_SET_ADDR	($4001 + 2*(COL+2)), 9	; data1 for attribute bytes
+			jsr	drawcolumn
+			stz VERA_ctrl	; use data port 0, DCSEL=0
+			VERA_SET_ADDR	($4000 + 2*(COL+3)), 9	; stride down on screen
+			lda #1
+			sta VERA_ctrl	; set data port 1
+			VERA_SET_ADDR	($4001 + 2*(COL+3)), 9	; data1 for attribute bytes
+			jsr	drawcolumn
+			
+drawcolumn:
+			lda #$66		; checkerboard PETSCII character
+			ldx #$A2		; red on orange
+			ldy #64			; default screen map = 64 rows of VRAM
+nextrow:	sta	VERA_data0
+			stx VERA_data1
+			dey
+			bne	nextrow
+			; TODO: draw a nice graduated meter to the side of the bar
+			rts
+.endproc
 
 ; -----------------------------------------------------------------
 
@@ -134,10 +221,14 @@ start:
 			lda #>irqhandler
 			sta IRQVec+1
 			; enable LINE IRQs on line 50
-			lda #82
+			lda #RASTER_LINE_TOP
 			sta VERA_irqline_l
 			lda #3				; 3=VSYNC and LINE, IRQ line_hi bit=0
 			sta VERA_ien
+			
+			jsr	swaplayer		; get the screen elements ready for the
+			jsr	drawmeter		; perf meter bar
+			
 			cli
 
 			; Call startmusic:
