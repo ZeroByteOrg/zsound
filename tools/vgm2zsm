@@ -2,6 +2,35 @@
 <?php
 
 /*
+$note = array( // values for when YM2151 is at 3.5MHz
+	277.18, 293.66, 311.13, 0,  // c# d  d#  x
+	329.63, 349.23, 369.99, 0,  // e  f  f#  x
+	392.00, 415.30, 440.00, 0,  // g  g# a   x
+	466.16, 493.88, 523.25, 0); // a# b  c   x
+
+
+function test() {
+
+        define("dec","%8s : %d\n");
+        define("hex","%8s : 0x%x\n");
+        define("fl","%8s : %f\n");
+
+        foreach (array(410,420,430,440,450,460,470) as $F) {
+                $val = getcode($F);
+                printf(fl,"freq",$F);
+                printf(hex,"kc",$val & 0xff);
+                printf(hex,"kf",$val >> 8);
+                printf(fl,"kc-freq",freq(($val>>4)&0x0f,$val & 0x0f));
+                print "--------------------------\n";
+        }
+}
+
+test();
+exit;
+*/
+
+
+/*
  * This tool is used to convert VGM files into ZSM files.
  * 
  * First - Apologies for the spaghetti code. This tool was originally
@@ -258,6 +287,7 @@ function init_shadow() {
 }
 
 function shadow($c, $reg, $val) {
+	return(true);
 	// returns TRUE if the $val is different than the previous
 	// value in $reg. Returns FALSE if no change. This will reduce, but
 	// not eliminate redundant writes. Patterns like X Y Y Z will be
@@ -672,9 +702,6 @@ function translate_opn($a, $d, $base, $ofst)
 		}
 		$cha += $base;
 		$op = ($a >> 2) & 3;
-//		// swap ops 3 & 2? (conflicting reports found on the web)
-//		if ($op == 1) { $op = 2; }
-//		else if ($op == 2) { $op = 1; }
 		// convert OPN patch register address to OPM.
 		// 0x30,0x40,0x50... -> 0x40,0x60,0x80...
 		$r = (($a >> 4) - 3) * 0x20;
@@ -715,11 +742,10 @@ function translate_opn($a, $d, $base, $ofst)
 printf("note: ch=%d f=%d oct=%d : pitch=%2f\n",$cha,$f,($oct>>4),$pitch);
 				$a = 0x28 + $cha;
 				$d = getcode($pitch);
-				if ($d > 0xff) { // if getcode returned a KF value in bits 8-15
-					generate(1,$cha+0x30,$d >> 8);
-				}
-				else if (isset($opts['f']))generate(1,$cha+0x30,0);
-				$d &= 0xff; // mask off any KF value
+				// send both the KC and KF values from the return value.
+				// Let generate() filter redundant writes from the output.
+				generate(1,$cha+0x30,$d >> 8);
+				generate(1,$cha+0x28,$d & 0xff);
 				$opnfreqs[$cha] = 0x80;
 			}
 			else {

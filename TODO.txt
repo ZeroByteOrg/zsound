@@ -1,3 +1,30 @@
+Core Features:
+	- volume support
+		- move actual YM/PSG write instructions out of playmusic into subroutines
+			! 2 PSG write routines: 1 assumes VERA Data Hi/MID settings point to PSG regs; 2 = no assumptions
+		- memory required:
+			- 24 bytes for current per-channel attenuation values
+			- 32 bytes for YM TL register cacheing
+			- 16 bytes for PSG Volume cacheing
+			? whatver amount of space needed to store the volume settings
+		! "tracks" for mixer levels: music, per-channel. (Master? , chip-wide?
+	- SFX playback
+		- ZFX format specification finalized
+			- KEEP CORE DESIGN / ARCHITECTURE GOALS IN MIND!!!
+			- counted loop support?
+			- should ZFX allow loading/playing FX in HiRAM?
+			- should ZFX playback routine allow transposition?
+			- should ZFX playback routine allow playback speed changes?
+		- Data structures for per-channel state (delay,pointer)(loop?)
+		- 
+		
+	- getchannel / releasechannel
+	- PCM playback as standalone routines
+	- PCM support in ZSM music
+	- basic access routines to chips e.g. playnote(chip,voice,pitch)
+	
+
+
 Investigate using macro-defined symbols to cut down the amount of conditional mumbo-jumbo at the beginning of the ASM files.
 .ident(.printf()):
 
@@ -8,3 +35,11 @@ Fix documentation to reflect single library multi-X16-revision support.
 Implement used-channel mask in zsmplayer.
 
 Implement SFX stream player routines to compliment the music routine.
+
+Volume support:
+	- fadein/fadeout routines for music
+	- per-voice volume - music volume
+	- master volume? (or is that just too much?)
+	- api for setting these
+
+
