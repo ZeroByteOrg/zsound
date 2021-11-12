@@ -2,6 +2,7 @@
 .include "x16.inc"
 .include "zsm.inc"
 
+; UNDER CONSTRUCTION. Obviously, no SFX player here yet.....
 
 ; create revision-suffixed identifiers for the symbols being exported
 ; e.g. symbol38 := symbol

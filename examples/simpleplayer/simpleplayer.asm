@@ -160,6 +160,8 @@ COL = 76
 			sta VERA_ctrl	; set data port 1
 			VERA_SET_ADDR	($4001 + 2*(COL+3)), 9	; data1 for attribute bytes
 			jsr	drawcolumn
+			stz VERA_ctrl	; put data port selection back to data0 for Kernal's benefit
+			rts				; CHROUT fails if it's set to data1 (helloworld uses CHROUT)
 			
 drawcolumn:
 			lda #$66		; checkerboard PETSCII character

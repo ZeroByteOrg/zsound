@@ -160,7 +160,9 @@ die:
 ; ---------------------------------------------------------------------------
 ;
 ; Halts music playback.
-; TODO: release the voices used by the tune? Use an arg to determine this?
+; TODO: release the voices used by the tune
+;       rquires implementation of the channel mask from the ZSM header
+;		vgm2zsm now writes the header. Next is adding support here
 ;
 
 .proc stopmusic: near

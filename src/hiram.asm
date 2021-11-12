@@ -3,9 +3,10 @@
 
 ; import data (zeropage music pointer) and stopmusic routine
 ; symbols were exported as e.g. data38 or data39. Import the appropriate
-; one, and alias it with data := data38...
+; one, and alias it without the revision suffix.
+; e.g.: data := data38
 
-;.define	DATA	= .ident(.sprintf("%s%d","data",X16_VERSION)
+; IMPORTS / EXPORTS:
 
 ; data is a zeropage symbol, so import it in that segment....
 .segment "ZEROPAGE"
@@ -23,14 +24,23 @@ stopmusic	:=	.ident(.sprintf("%s%d","stopmusic",X16_VERSION))
 .ident(.sprintf("%s%d","nextdata",X16_VERSION)) := nextdata
 .export	.ident(.sprintf("%s%d","nextdata",X16_VERSION))
 
+;-----------------------------------------------------------------------
+; nextdata
+;
+; Advances the ZP pointer "data" by one byte through the HIRAM window.
+; It is necessary to call this routine instead of the typical
+; (ZP),Y method, as the data pointer could be pointing at the end of
+; the window at any given time, and if it advances past the end, it
+; must be wrapped back to $A000 and swap in the next bank.
+;
+
 .segment "CODE"
 .proc nextdata: near
 			; advance the data pointer, with bank-wrap if necessary
 			inc	data
-			beq	:+
-			rts
-			; next page
-:			lda data+1
+			beq	nextpage
+			rts				; pointer remained in the same page. Done.
+nextpage:	lda data+1		; advance the "page" address
 			inc
 			cmp	#$c0		; Check for bank wrap.
 			bcc nobankwrap
@@ -39,12 +49,12 @@ stopmusic	:=	.ident(.sprintf("%s%d","stopmusic",X16_VERSION))
 			inc RAM_BANK	; bank in the next RAM bank
 			inc data + SONGPTR::bank
 			
-			; TODO: Make this a cpx w/ actual # of avail banks.
+			; TODO: Make this a cmp w/ actual # of avail banks.
 			;       (don't assume 2MB of HIRAM installed)
-			beq	die		; out-of-memory error
+			beq	die			; out-of-memory error
 nobankwrap:
-			sta	data+1
-			rts
+			sta	data+1		; store the new "page" address
+			rts				; done
 die:
 			; stop the music and return error (carry bit = 1)
 			jsr stopmusic

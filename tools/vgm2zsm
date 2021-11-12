@@ -2,23 +2,6 @@
 <?php
 
 /*
-$note = array( // values for when YM2151 is at 3.5MHz
-	277.18, 293.66, 311.13, 0,  // c# d  d#  x
-	329.63, 349.23, 369.99, 0,  // e  f  f#  x
-	392.00, 415.30, 440.00, 0,  // g  g# a   x
-	466.16, 493.88, 523.25, 0); // a# b  c   x
-
-
-$kc = getcode_kf($argv[1]);
-$kf = $kc >> 8;
-$kc = $kc & 0xff;
-
-printf("KC:0x%02x KF:0x%02x\n",$kc,$kf);
-exit;
-*/ 
-
-
-/*
  * This tool is used to convert VGM files into ZSM files.
  * 
  * First - Apologies for the spaghetti code. This tool was originally
@@ -42,6 +25,16 @@ exit;
  * 		figured out how to properly interpret those, I just added this switch
  * 		with the intent of fixing the clock speed interpretation in the actual
  * 		code. I haven't done this. It's manual. Sorry.
+ * 
+ * -f: KF mode disabled
+ * 		By default, when translating from OPNx chips, a KC and a KF value are
+ * 		generated for best accuracy. This is needed for tunes that do things like
+ * 		"manual" vibrato (modifying the frequency a lot instead of using the LFO)
+ * 		- e.g. Sonic The Hedgehog, Green Hill Zone does this.
+ * 		With KF disabled, such effects can be erased without the added precision
+ * 		of KF. However, the KF writes consume more space and resources to process,
+ * 		so if you think they aren't needed on a particular tune, -f disables these
+ * 		and the resulting VGM will only have semitone-accurate note reproduction.
  * 
  * I ultimately intend to rewrite this tool using Python, and when doing so, the
  * new script should be much more extensible than this one was. Oh well. Too bad
@@ -79,35 +72,14 @@ $commands=array(
   0x54 => 0x01, // YM2151 message
 );
 
-// For R39, use the 3.5MHz table (name it as $note)
-
 // C#,D,D#,x,E,F,F#,x,G,G#,A,x,A#,B,C
-
-/*
-if (isset($opts['4'])) {
-$note = array( // values for when YM2151 is at 4MHz
-	311.13, 329.63, 349.23, 0,  // c# d  d#  x
-	369.99, 392.00, 415.30, 0,  // e  f  f#  x
-	440.00, 466.16, 493.88, 0,  // g  g# a   x
-	523.25, 554.37, 587.33, 0); // a# b  c   x   
-}
-else {
-$note = array( // values for when YM2151 is at 3.5MHz
-	277.18, 293.66, 311.13, 0,  // c# d  d#  x
-	329.63, 349.23, 369.99, 0,  // e  f  f#  x
-	392.00, 415.30, 440.00, 0,  // g  g# a   x
-	466.16, 493.88, 523.25, 0); // a# b  c   x
-}
-*/
-
 $note = array( // values for when YM2151 is at 3.5MHz
 	277.18, 293.66, 311.13, 0,  // c# d  d#  x
 	329.63, 349.23, 369.99, 0,  // e  f  f#  x
 	392.00, 415.30, 440.00, 0,  // g  g# a   x
 	466.16, 493.88, 523.25, 0); // a# b  c   x
 
-
-// LUT for converting AY volume register into VERA PSG equivalent %max
+// LUT for converting AY volume register into VERA PSG equivalent
 $PSGvolume = array( 0,1,2,3,4,8,12,16,24,28,34,40,45,51,58,63);
 		
 		
@@ -136,7 +108,7 @@ function snfnum($ayfnum) {
 	return round($freq / 0.37252903, 0, PHP_ROUND_HALF_UP);
 }
 
-function getcode_kf1 ($freq) {
+function getcode_kf ($freq) {
 	global $note;
 	
 	$newoct = 0;
@@ -146,6 +118,8 @@ function getcode_kf1 ($freq) {
 	do {
 		$oct = $newoct;
 		$kc = $newkc;
+		$f = freq($oct,$kc);  // set $f to be the freq of this code.
+		if ($f == $freq) return(($oct << 4) | ($kc & 0x0f));
 		$newkc++;
 		if ($newkc % 4 == 3) $newkc++;
 		if ($newkc > 0x0f) {
@@ -153,38 +127,14 @@ function getcode_kf1 ($freq) {
 			$newoct++;
 			$newkc -= 0x0f;
 		}
-printf("Newoct: %d\nNewKC : %d\n",$newoct, $newkc);
 		$fnext = freq($newoct, $newkc);
 	} while ($fnext <= $freq);
-	// $oct,$kc are now the highest code that is <= target frequency.
-	$f = freq($oct,$kc);  // set $f to be the freq of this code.
-	$cent = ($fnext - $f) / 64.0;  // Hz value of one cent in this range.
-	$kf = floor(($freq-$f)/$cent);
-	return ( ($kf << 8) | ($oct << 4) | $kc );
+	// $oct,$kc are now the highest code that is < target frequency.
+	// $f is this KC's frequency, and: $f < $freq < $fnext
+	$HZpercent = ($fnext - $f) / 64.0;  // Hz value of one cent in this range.
+	$kf = floor(($freq-$f)/$HZpercent);
+	return ( ($kf << 10) | ($oct << 4) | $kc ); // KF << 10 because KF reg is 6 msb of that reg.
 };
-
-function getcode_kf($freq) {
-	$kc = getcode_kc($freq);
-	$f = freq($kc>>4,$kc & 0xf);
-	$nextkc = $kc+1;
-	if ($nextkc % 4 == 3) $nextkc++;
-	if ($nextkc > 0xff) {
-		$nextkc = $kc-1;
-		if ($nextkc % 4 == 3) $nextkc--;
-	}
-	
-	// don't bother with KF past the ends of the range...
-	if (($kc == 0x00) && ($f > $freq)) return($kc);
-	if (($kc == 0x7f) && ($f < $freq)) return($kc);
-	$f1 = freq($nextkc>>4,$nextkc & 0x0f);
-	$range = abs($f1 - $f);
-	$cent = $range/32;
-	$err = $freq - $f;
-	$kf = floor( $err/$range * $cent) << 2;
-printf ("freq : %f\n   f : %f\n  f1 : %f\ncent : %f\n",$freq,$f,$f1,$cent);
-	return ((($kf & 0xfc)<<8) | $kc);
-}
-
 
 function getcode_kc($freq) {
 	// returns nearest semitone-resolution match. (doesn't generate KF writes)
@@ -214,7 +164,7 @@ function getcode_kc($freq) {
 
 function getcode($freq) {
 	global $opts;
-	if (isset($opts['f'])) return(getcode_kf($freq));
+	if (! isset($opts['f'])) return(getcode_kf($freq));
 	return(getcode_kc($freq));
 }
 
@@ -295,7 +245,46 @@ function writepause() {
   }
 }
 
+function init_shadow() {
+	global $shadows;
+	
+	for ($i = 0 ; $i < 256 ; $i++) {
+		$shadows[1][$i] = 0x100; // seed with impossible values
+		$shadows[2][$i] = 0x100;
+	}
+	$shadows[1]['key'] = array(
+		0x100,0x100,0x100,0x100,0x100,0x100,0x100,0x100
+	);
+}
+
+function shadow($c, $reg, $val) {
+	// returns TRUE if the $val is different than the previous
+	// value in $reg. Returns FALSE if no change. This will reduce, but
+	// not eliminate redundant writes. Patterns like X Y Y Z will be
+	// reduced to X Y Z - better than nothing....
+	
+	global $shadows;
+	if ($c == 1) {
+		switch ($reg) {
+		case 0x08:
+			$v = $val & 0x07;
+			if ($shadows[$c]['key'][$v] == $val) return(false);
+			$shadows[$c]['key'][$v] = $val;
+			return(true);
+			break;
+		case 0x19:
+			if ($val >= 0x80) $reg = 0x1a;
+		}
+	}
+	if ($shadows[$c][$reg] == $val) return(false);
+	$shadows[$c][$reg] = $val;
+	return(true);
+}
+
 function generate($c, $a, $d) {
+	// meat and potatoes of the script. Send raw reg/val pairs to this
+	// function which converts them into ZSM format and buffers the ZSM
+	// data in $songdata. 
 	global $opts;
 	global $channelsused;
 	global $songdata;
@@ -304,7 +293,7 @@ function generate($c, $a, $d) {
 	global $longest;
 	global $bytes;
 	global $maxatbyte;
-	global $i;
+	global $i;	// yes, global $i. Sue me.
 	global $ymbuffer;
 
 	$totalticks += $ticks;
@@ -329,12 +318,15 @@ function generate($c, $a, $d) {
 				$d = YM_transpose($d,YM_DN);
 			}
 		}
-		array_push($ymbuffer,$a,$d);
+		if (shadow(1,$a,$d))
+			array_push($ymbuffer,$a,$d);
 		break;
 	case 2: // immediately write out PSG commands
 		$channelsused['psg'] |= 1 << intdiv( $a, 4 ); # update the PSG channel mask
-		array_push($songdata,$a,$d);
-		$bytes += 2;
+		if (shadow(2,$a,$d)) {
+			array_push($songdata,$a,$d);
+			$bytes += 2;
+		}
 printf("ZSM WRITE: 0x%02x 0x%02x\n",$a,$d);
 		break;
 	default:
@@ -610,6 +602,7 @@ function translate_opn($a, $d, $base, $ofst)
 	global $opnfreqs;
 	global $opnclock;
 	global $cityconpatchfix;
+	global $opts;
 
 	$a0 = $a;
 	$d0 = $d;
@@ -725,6 +718,7 @@ printf("note: ch=%d f=%d oct=%d : pitch=%2f\n",$cha,$f,($oct>>4),$pitch);
 				if ($d > 0xff) { // if getcode returned a KF value in bits 8-15
 					generate(1,$cha+0x30,$d >> 8);
 				}
+				else if (isset($opts['f']))generate(1,$cha+0x30,0);
 				$d &= 0xff; // mask off any KF value
 				$opnfreqs[$cha] = 0x80;
 			}
@@ -866,6 +860,8 @@ $notecount[0x55]=0;
 $notecount[0xa5]=0;
 
 $errors=array();
+$shadows = array();
+init_shadow();
 
 // A B C freqs, ENV period, Voice Enable byte
 $ayshadow = array (
@@ -1088,6 +1084,7 @@ printf ("[%6x] : Unknown command (%2x)\n",$i-1,$cmd);
   }; // end of switch()
   if ((sizeof($ymbuffer)%2) != 0) { print "WTF???"; exit; }
   if ($i == $loopstart) {
+	  init_shadow(); // prevent garbled sound at loop points due to instruction cache.
 	  flushymbuffer();
 	  writepause();
 	  // note: the loop offset pointer in the header is relative to start-of-file, not start-of-data
