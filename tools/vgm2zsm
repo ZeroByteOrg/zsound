@@ -744,8 +744,9 @@ printf("note: ch=%d f=%d oct=%d : pitch=%2f\n",$cha,$f,($oct>>4),$pitch);
 				$d = getcode($pitch);
 				// send both the KC and KF values from the return value.
 				// Let generate() filter redundant writes from the output.
-				generate(1,$cha+0x30,$d >> 8);
-				generate(1,$cha+0x28,$d & 0xff);
+				generate(1,$cha+0x30,$d >> 8); // send KF now, KC passes through
+				$d &= 0xff; // mask off the KF portion of the value from getcode()
+				//generate(1,$cha+0x28,$d & 0xff);
 				$opnfreqs[$cha] = 0x80;
 			}
 			else {
