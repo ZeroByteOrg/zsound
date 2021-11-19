@@ -2,35 +2,6 @@
 <?php
 
 /*
-$note = array( // values for when YM2151 is at 3.5MHz
-	277.18, 293.66, 311.13, 0,  // c# d  d#  x
-	329.63, 349.23, 369.99, 0,  // e  f  f#  x
-	392.00, 415.30, 440.00, 0,  // g  g# a   x
-	466.16, 493.88, 523.25, 0); // a# b  c   x
-
-
-function test() {
-
-        define("dec","%8s : %d\n");
-        define("hex","%8s : 0x%x\n");
-        define("fl","%8s : %f\n");
-
-        foreach (array(410,420,430,440,450,460,470) as $F) {
-                $val = getcode($F);
-                printf(fl,"freq",$F);
-                printf(hex,"kc",$val & 0xff);
-                printf(hex,"kf",$val >> 8);
-                printf(fl,"kc-freq",freq(($val>>4)&0x0f,$val & 0x0f));
-                print "--------------------------\n";
-        }
-}
-
-test();
-exit;
-*/
-
-
-/*
  * This tool is used to convert VGM files into ZSM files.
  * 
  * First - Apologies for the spaghetti code. This tool was originally
@@ -61,7 +32,7 @@ exit;
  * 		"manual" vibrato (modifying the frequency a lot instead of using the LFO)
  * 		- e.g. Sonic The Hedgehog, Green Hill Zone does this.
  * 		With KF disabled, such effects can be erased without the added precision
- * 		of KF. However, the KF writes consume more space and resources to process,
+ * 		of KF. However, the KF writes consume more space and X16 resources to process,
  * 		so if you think they aren't needed on a particular tune, -f disables these
  * 		and the resulting VGM will only have semitone-accurate note reproduction.
  * 
@@ -116,6 +87,11 @@ $PSGvolume = array( 0,1,2,3,4,8,12,16,24,28,34,40,45,51,58,63);
 //    uint8_t octave = (69 + 12 * log2(pitch / 440.0)) / 12 - 1;
 //    uint16_t fnum = (144 * pitch * (1 << 19) / channel->chip->clock) / (1 << (octave - 1));
 
+function DEBUG($str,...$vars) {
+	global $opts;
+	if (isset($opts['d'])) print vsprintf($str,$vars);
+}
+
 function freq($oct,$code) {
 	global $note;
 
@@ -126,7 +102,7 @@ function psgfnum($ayfnum) {
 	global $ayclock;
 	if($ayfnum < 1) { return 0; }
 	$freq = $ayclock / (16 * $ayfnum); // per AY-3-8910 datasheet
-printf("   ----- Frequency calculated as %f\n",$freq);
+	DEBUG("   ----- Frequency calculated as %f\n",$freq);
 	// the magic number 0.3725... is computed from the VERA docs
 	return round($freq / 0.37252903, 0, PHP_ROUND_HALF_UP);
 }
@@ -140,28 +116,47 @@ function snfnum($ayfnum) {
 function getcode_kf ($freq) {
 	global $note;
 	
+	// handle $freq < min or >= max first.
+	if ($freq < freq(0,0))
+		return(0);
+	if ($freq >= freq(7,0x0e))
+		return(0x7e);
+
+	// find highest KC value that produces a frequency below the requested freq.
 	$newoct = 0;
 	$newkc = 0;
-	$oct = 0;
-	$kc = 0;
 	do {
 		$oct = $newoct;
 		$kc = $newkc;
-		$f = freq($oct,$kc);  // set $f to be the freq of this code.
+		$f = freq($oct,$kc);  // set $f to be the freq of current code.
+		// if exact match, then just return the KC with no KF.
 		if ($f == $freq) return(($oct << 4) | ($kc & 0x0f));
 		$newkc++;
-		if ($newkc % 4 == 3) $newkc++;
+		if ($newkc % 4 == 3) $newkc++; // skip invalid KC values 0x3, 0x7, 0xb, and 0xf
+		// check whether new octave or not
 		if ($newkc > 0x0f) {
 			if ($newoct == 7) return(0x7e); // $freq > OPM's max freq. Just return max.
 			$newoct++;
-			$newkc -= 0x0f;
+			$newkc -= 0x10;
 		}
 		$fnext = freq($newoct, $newkc);
 	} while ($fnext <= $freq);
 	// $oct,$kc are now the highest code that is < target frequency.
 	// $f is this KC's frequency, and: $f < $freq < $fnext
-	$HZpercent = ($fnext - $f) / 64.0;  // Hz value of one cent in this range.
-	$kf = floor(($freq-$f)/$HZpercent);
+	$centDF = ($fnext - $f) / 64.0;  // Hz value of one cent in this range.
+	$kf = round(($freq-$f)/$centDF, 0, PHP_ROUND_HALF_UP);
+	if ($kf == 64) {
+		// if the frquency is closer to the next semitone (KF rounded up to 64)
+		// then adjust KC up by one semitone and set KF to zero
+		$kf = 0;
+		$kc++;
+		if ($kc % 4 == 3) $kc++;
+		if ($kc > 0x0f) {
+			$kc -= 0x10;
+			$oct++;
+			// no need to check oct > 7 because we eliminated >= max freq at start of function
+		}
+	}
 	return ( ($kf << 10) | ($oct << 4) | $kc ); // KF << 10 because KF reg is 6 msb of that reg.
 };
 
@@ -357,7 +352,7 @@ function generate($c, $a, $d) {
 			array_push($songdata,$a,$d);
 			$bytes += 2;
 		}
-printf("ZSM WRITE: 0x%02x 0x%02x\n",$a,$d);
+DEBUG("ZSM WRITE: 0x%02x 0x%02x\n",$a,$d);
 		break;
 	default:
 		printf("Illegal command ID %d written at VGM offset 0x%06x\n",$c,$i);
@@ -400,8 +395,8 @@ function out_zsm($ofile)
 	$songdata[6] = $channelsused['ym'];
 	$songdata[7] = $channelsused['psg'] & 0xff;
 	$songdata[8] = $channelsused['psg'] >> 8;
-printf("YM channel mask: %s\n", tobin($channelsused['ym']));
-printf("PSG channel mask: %s\n", tobin($channelsused['psg']));
+	DEBUG("YM channel mask: %s\n", tobin($channelsused['ym']));
+	DEBUG("PSG channel mask: %s\n", tobin($channelsused['psg']));
 	$of = fopen($ofile, "w+b");
 	fwrite($of,"zm");
 	fwrite($of,pack('C*',...$songdata));
@@ -433,20 +428,23 @@ function translate_sn($d)
 		$sninitialized = true;
 	}
 	
-	// single-byte write. (set volume, set noise freq, or set tone LSB)
-	// values with MSB clear = write the 6 MSB of the tone of the most
-	// recently latched voice.
+	// Ti SN76489 PSG uses a single byte write
+	// The byte contains either a "register select" + data (bits 0-3)
+	// or the 6 MSB of a tone setting.
+	//
 	// values with MSB set:
-	// 	bits 0-3 = data
-	//	bit    4 = volume/pitch select (0=pitch, 1=volume)
-	//  bits 5-6 = voice select
+	// 	 bits 0-3 = data
+	//	 bit    4 = volume/pitch select (0=pitch, 1=volume)
+	//   bits 5-6 = voice select
+	// values with MSB clear: Write the 6 MSB of the tone of
+	//	 the most recently latched voice.
 	if ($d >= 0x80) {
 		// write data to a voice & latch the voice number
 		$voice = ($d & 0x60) >> 5;
 		$value = $d & 0x0f;
 		$snlatch[3] = $voice;
 		if (($d & 0x10) > 0) {
-			// set volume
+			// bit 4 set means to set volume
 			if ($value != 0x0f) {
 				$value = 0x3f - ($value << 2);
 				$value |= 0xc0; // enable VERA L & R balance enable bits.
@@ -469,9 +467,9 @@ function translate_sn($d)
 			case 2:
 				break;
 			case 3: // freq follows voice 2 freq setting
-printf(" ---- TI SN7xxx set noise mode to follows-voice-2 mode\n");
-printf(" ---- TI SN7xxx     vo2 f-lo: 0x%02x\n",$psgshadow['lo'][2]);
-printf(" ---- TI SN7xxx     vo2 f-hi: 0x%02x\n",$psgshadow['hi'][2]);
+				DEBUG(" ---- TI SN7xxx set noise mode to follows-voice-2 mode\n");
+				DEBUG(" ---- TI SN7xxx     vo2 f-lo: 0x%02x\n",$psgshadow['lo'][2]);
+				DEBUG(" ---- TI SN7xxx     vo2 f-hi: 0x%02x\n",$psgshadow['hi'][2]);
 
 				generate(2,12,$psgshadow['lo'][2]);
 				generate(2,13,$psgshadow['hi'][2]);
@@ -479,13 +477,13 @@ printf(" ---- TI SN7xxx     vo2 f-hi: 0x%02x\n",$psgshadow['hi'][2]);
 			}
 		}
 	}
-	else {
+	else { // (value had MSB clear)
 		// write to MSB of the most recently latched voice
 		$voice = $snlatch[3];
 		if ($voice < 3) {
 			$value = $d << 4;
 			$value |= ($snlatch[$voice] & 0x0f);
-printf ("SN76489: setting freq (ch %d) to %d. (VGM ofst 0x%04x)\n",$voice,$value,$i-2);
+			DEBUG("SN76489: setting freq (ch %d) to %d. (VGM ofst 0x%04x)\n",$voice,$value,$i-2);
 			$freq = snfnum($value);
 			generate(2,4*$voice,$freq & 0xff);
 			generate(2,4*$voice+1,($freq >> 8) & 0xff);
@@ -518,7 +516,7 @@ function translate_ay($a, $d, $chip)
 	//     3: CONT.
 	// E-F = IO port data (ignore)
 
-printf("VGM: SSG command: a=0x%02x d=0x%02x chip=%d\n",$a,$d,$chip);
+	DEBUG("VGM: SSG command: a=0x%02x d=0x%02x chip=%d\n",$a,$d,$chip);
 	switch ($a) {
 	case 0: // chan A fnum LSB
 	case 1: // chan A fnum MSB
@@ -555,34 +553,35 @@ printf("VGM: SSG command: a=0x%02x d=0x%02x chip=%d\n",$a,$d,$chip);
 		// then send initializations to PSG voices if enable bit 1->0
 		// or disable voices where enable bit 0->1
 		$d &= 0x3f; // mask off the data port DDR bits.
-printf (" ===== SSG/AY mode register: chip=%d\n",$chip);
-printf ("%27s:          d = %s\n","",tobin($d));
-printf ("%27s: old ayshad = %s\n","",tobin($ayshadow[$chip][4]));
+		DEBUG(" ===== SSG/AY mode register: chip=%d\n",$chip);
+		DEBUG("%27s:          d = %s\n","",tobin($d));
+		DEBUG("%27s: old ayshad = %s\n","",tobin($ayshadow[$chip][4]));
 		$changes = $ayshadow[$chip][4] ^ $d; // sense which bits have changed
-printf ("%27s:    changes = %s\n","",tobin($changes));
+		DEBUG("%27s:    changes = %s\n","",tobin($changes));
 		$changes = $changes | ($changes >> 3); // detect changes to tone OR noise
-printf ("%27s:    changes = %s\n","",tobin($changes));
+		DEBUG("%27s:    changes = %s\n","",tobin($changes));
 		$changes &= 0x07; // clear the "noise" bits as the 3lsb now reflect both.
-printf ("%27s:    changes = %s\n","",tobin($changes));
+		DEBUG("%27s:    changes = %s\n","",tobin($changes));
 		$ayshadow[$chip][4] = $d;
 		$d ^= 0xff; // flip all the bits for 0=false, 1=true logic for remainder of routine
-printf ("%27s: modified d = %s\n","",tobin($d));
-printf ("%27s: new ayshad = %s\n","",tobin($ayshadow[$chip][4]));
+		DEBUG("%27s: modified d = %s\n","",tobin($d));
+		DEBUG("%27s: new ayshad = %s\n","",tobin($ayshadow[$chip][4]));
 
 		for ($cha = 0 ; $cha < 3 ; $cha++) {
 			if (($changes & 0x01) == 1) {
 				$psgcha = $cha + (3 * $chip);
 				$ena_tone  = $d & 0x01;
 				$ena_noise = ($d >> 3) & 0x01;
-printf ("%27s: psg channl = %d\n","new state",$psgcha);
-printf ("%27s:  ena tone  = %d\n","",$ena_tone);
-printf ("%27s:  ena noise = %d\n","",$ena_noise);
+				DEBUG("%27s: psg channl = %d\n","new state",$psgcha);
+				DEBUG("%27s:  ena tone  = %d\n","",$ena_tone);
+				DEBUG("%27s:  ena noise = %d\n","",$ena_noise);
 				if ($ena_noise > 0) {
 					generate(2,4*$psgcha+3,0xc0);  // set PSG channel to noise waveform
 					// HACK to get drum working - do it right later
-					// (write a hard-wired freq for channels w/ Noise)
+					// (write a hard-wired constant freq for channels w/ Noise)
+					// (need to create code that chooses acurate values instead)
 					generate(2,4*$psgcha,0x9a);
-					generate(2,4*$psgcha+1,0x17); 
+					generate(2,4*$psgcha+1,0x17);
 				}
 				else if ($ena_tone > 0) {
 					generate(2,4*$psgcha+3,0x3f); // Waveform = 50% duty cycle square
@@ -724,35 +723,34 @@ function translate_opn($a, $d, $base, $ofst)
 		}
 		$cha += $base;
 		if ($a >= 0xa8) {
-			printf("ignoring special mode voice 3 setting to 0x%02x\n",$a);
+			printf("ignoring special mode voice 3 setting: reg=0x%02x val=0x%02x\n",$a,$d);
 			return;
 		}
 		if ($a < 0xa4) {
 			// setting LSB - set the freq
-			if ($opnfreqs[$cha] != 0x80) {
-				// do some jiggery-pokery to convert to OPM KC value:
-				$oct = (($opnfreqs[$cha] >> 3)-0) & 0x07;
-				$oct = $oct << 4;
-				$f = ($d | ($opnfreqs[$cha] << 8)) & 0x07ff;
-				// The following formula appears in a snippet from the unicorn that
-				// is the YM2203 application manual (not the datasheet)
-				// shown in a post to a thread at vgmrips.net:
-				// https://vgmrips.net/forum/viewtopic.php?f=15&t=2907
-				$pitch = ($opnclock * pow(2,($oct>>4)-1) * $f) / ( 144 * (1 << 20));
-printf("note: ch=%d f=%d oct=%d : pitch=%2f\n",$cha,$f,($oct>>4),$pitch);
-				$a = 0x28 + $cha;
-				$d = getcode($pitch);
-				// send both the KC and KF values from the return value.
-				// Let generate() filter redundant writes from the output.
-				generate(1,$cha+0x30,$d >> 8); // send KF now, KC passes through
-				$d &= 0xff; // mask off the KF portion of the value from getcode()
-				//generate(1,$cha+0x28,$d & 0xff);
-				$opnfreqs[$cha] = 0x80;
-			}
-			else {
+			if ($opnfreqs[$cha] == 0x80) {
 				print "VGM sets the LSB w/o first setting the MSB. Skipping note\n";
 				return;
 			}
+			// convert OPN block+fnum into OPM KC value:
+			$oct = (($opnfreqs[$cha] >> 3)-0) & 0x07;
+			$oct = $oct << 4;
+			// combine fnum hi and low bit registers into single varialbe $f
+			$f = ($d | ($opnfreqs[$cha] << 8)) & 0x07ff;
+			// The following formula appears in a snippet from the unicorn that
+			// is the YM2203 application manual (not the datasheet)
+			// shown in a post to a thread at vgmrips.net:
+			// https://vgmrips.net/forum/viewtopic.php?f=15&t=2907
+			$pitch = ($opnclock * pow(2,($oct>>4)-1) * $f) / ( 144 * (1 << 20));
+			DEBUG("note: ch=%d f=%d oct=%d : pitch=%2f\n",$cha,$f,($oct>>4),$pitch);
+			$a = 0x28 + $cha;
+			$d = getcode($pitch);
+			// send both the KC and KF values from the return value.
+			// Let generate() filter redundant writes from the output.
+			generate(1,$cha+0x30,$d >> 8); // send KF now, KC passes through
+			$d &= 0xff; // mask off the KF portion of the value from getcode()
+			//generate(1,$cha+0x28,$d & 0xff);
+			$opnfreqs[$cha] = 0x80;
 		}
 		else {
 			// setting MSB and Block (octave)
@@ -761,30 +759,31 @@ printf("note: ch=%d f=%d oct=%d : pitch=%2f\n",$cha,$f,($oct>>4),$pitch);
 		}
 		break;
 	case 0xB:	// FB & Connect ALG
-printf ("====> CON debug: translate_opn(0x%02x,0x%02x,%d,0x%04x)\n",$a,$d,$base,$ofst);
+		DEBUG("====> CON debug: translate_opn(0x%02x,0x%02x,%d,0x%04x)\n",$a,$d,$base,$ofst);
 		if ($a > 0xb2) {
 			printf ("invalid FB / CON register 0x%02\n",$a);
 			return;
 		}
 		$a = $a - 0x90 + $base;
 		$d |= 0xc0; // since 2203 doesn't have L/R set bits here...
-printf ("====> CON debug: translated  : a=0x%02x d=0x%02x\n",$a,$d);
+		DEBUG("====> CON debug: translated  : a=0x%02x d=0x%02x\n",$a,$d);
 		break;
 	default:
-		printf ("Unsupported register %02x\n",$a);
+		DEBUG("Unsupported register %02x\n",$a);
 		return;
 	}
 	if ($a0 < 0x20) {
-printf ("2203(%d): 0x%02x 0x%02x -> 2151: 0x%02x 0x%02x\n",$base, $a0, $d0, $a, $d);
+		DEBUG("2203(%d): 0x%02x 0x%02x -> 2151: 0x%02x 0x%02x\n",$base, $a0, $d0, $a, $d);
 	}
 	else {
 		if ($a0 == 0x28) { $opncha = $d0 & 0x0f; } else { $opncha = $a0 % 4; }
 		if ($a == 0x08) { $opmcha = $d & 0x07; } else { $opmcha = $a % 8; }
-printf ("2203(%d): 0x%02x 0x%02x (ch %d) -> 2151: 0x%02x 0x%02x (ch %d) (i=0x%05x)\n",$base, $a0, $d0, $opncha, $a, $d, $opmcha, $ofst);
+		DEBUG("2203(%d): 0x%02x 0x%02x (ch %d) -> 2151: 0x%02x 0x%02x (ch %d) (i=0x%05x)\n",$base, $a0, $d0, $opncha, $a, $d, $opmcha, $ofst);
 		if ($a0 >= 0xa0 && $a0 < 0xaf) {
-			printf ("       : Freq %d %4d ---> 2151 KC 0x%02x\n", $oct/16,$f,$d);
+			DEBUG("       : Freq %d %4d ---> 2151 KC 0x%02x\n", $oct/16,$f,$d);
 		}
 	}
+	// City Connection VGMs fail to initialize these registers
 	if ($cityconpatchfix === false) {
 		$cityconpatchfix = true;
 		foreach (array(0xc1,0xc2,0xc8,0xc9,0xca,0xd0,0xd1,0xd2,0xd8,0xd9,0xda) as $FIX) {
@@ -843,7 +842,7 @@ $ayclock += $vgm[0x76] << 16;
 $ayclock += $vgm[0x77] << 24;
 $ayclock &= 0xbfffffff; // bit 30 = dual chip flag. Ignore it.
 
-printf("OPN clock rate = %d\n",$opnclock);
+DEBUG("OPN clock rate = %d\n",$opnclock);
 //$opnclock *= 2; // test
 if (isset($opts['b'])) {$opnclock *= 2;} // Black Tiger
 else {$opnclock *= 6;}
@@ -887,7 +886,7 @@ $notecount[0x55]=0;
 $notecount[0xa5]=0;
 
 $errors=array();
-$shadows = array();
+$shadows = array(); // shadow the X16's audio chip states to filter out redundant data writes
 init_shadow();
 
 // A B C freqs, ENV period, Voice Enable byte
@@ -948,8 +947,7 @@ while ($i < EOF) {
 	$i += 2;
 	switch ($a) { // handle special cases for OPN2 support....
 	case 0x22: // LFO
-printf ("2612LFO: reg 0x22 written with value 0x%02x\n",$d);
-		$ignore = true;
+		DEBUG("2612LFO: reg 0x22 written with value 0x%02x\n",$d);
 		// LFO speeds: 3.98, 5.56, 6.02, 6.37,
 		//             6.88, 9.63, 48.1, 72.2
 		$lfotable = array ( 0xc2, 0xca, 0xcc, 0xce,
@@ -957,31 +955,46 @@ printf ("2612LFO: reg 0x22 written with value 0x%02x\n",$d);
 		if (($d & 0x08) > 0) { $d = $lfotable[$d & 0x07]; }
 		else { $d = 0; }
 		$a = 0x18;
-printf ("2612LFO: calling generate: a=0x%02x d=0x%02x\n",$a,$d);
-		generate(1,$a,$d);
-		generate(1,0x19,0xff);
-		generate(1,0x19,0x7f);
+		DEBUG("2612LFO: calling generate: a=0x%02x d=0x%02x\n",$a,$d);
+		generate(1,$a,$d); // send LFO freq value to YM2151
+		if ($d == 0) {
+			// set PMD and AMD to 0 so LFO (which cannot be "disabled" in OPM)
+			// has no affect on channels
+			generate(1,0x19,0);
+			generate(1,0x19,0x80);
+		} else {
+			generate(1,0x19,0x64 | 0x80); // set PMD to 0x64 to get reasonably close results
+			generate(1,0x19,0x7f);
+		}
+		$ignore = true; // we've already written everything from here. No need to call translate_opn.
 		break;
 	case 0xb4:
 	case 0xb5:
-	case 0xb6: // b4-6 = LFO sensitivity. Ignoring for now
+	case 0xb6: // b4-6 = LFO sensitivity.
+		// LFO behaves quite differently between the 2612 and 2151.
+		// using LUTs for 'best fit' selections.
+		$amstable = array(0,1,2,3); // <--- not correct yet.
+		$pmstable = array (0,1,2,2,3,3,5,6);
 		$cha = $base + $a - 0xb4;
-		$ams = ($d & 0x30) >> 4;
-		$pms = ($d & 0x07) << 4;
+		$ams = $amstable[($d & 0x30) >> 4];
+		$pms = $pmstable[($d & 0x07)] << 4;
 		$d = $ams | $pms;
 		generate(1,$cha + 0x38,$d);
-		$ignore = true;
+		$ignore = true; // we've already written everything from here. No need to call translate_opn.
 		break;
 	case 0x2a: // DAC data write
 	case 0x2b: // DAC enable
 		$ignore = true;
 		break;
-case 0xb0:
-case 0xb1:
-case 0xb2:
-printf ("====> CON debug: cmd=0x%02x base=%d VGM values: 0x%02x 0x%02x (byte 0x%06x)\n",$cmd,$base,$a,$d,$i-3);
-break;
-	case 0x28: // keyon/off register for 2612 is same for all 6 voices
+	case 0xb0:
+	case 0xb1:
+	case 0xb2:
+		DEBUG("====> CON debug: cmd=0x%02x base=%d VGM values: 0x%02x 0x%02x (byte 0x%06x)\n",$cmd,$base,$a,$d,$i-3);
+		break;
+	case 0x28: // keyon/off register
+		// 2612 support is done in this script by pretending it's just a dual-2203 tune...
+		// re-map 2612 keyon commands from "chip 1, voice 3-5 -> chip 2, voice 0-2
+		// so the 2203 routine will use the correct YM2151 channels as output.
 		if (($d & 0x0f) > 3) {
 			$base = 3;
 			$d -= 4;
@@ -1019,7 +1032,7 @@ break;
 	$i+=2;
 	$datasize=$vgm[$i] | $vgm[$i+1]<<8 | $vgm[$i+2]<<16 | $vgm[$i+3]<<24;
 	$i += $datasize + 4;
-	printf("[%6x] Data block (%4x)\n",$t,$datasize);
+	DEBUG("[%6x] Data block (%4x)\n",$t,$datasize);
 	break;
   case 0x4F:	// Sega GameGear PCM stereo write (one-byte operand)
 	$i+=1; 		// (skip)
