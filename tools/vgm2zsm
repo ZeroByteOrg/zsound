@@ -964,7 +964,7 @@ while ($i < EOF) {
 			generate(1,0x19,0x80);
 		} else {
 			generate(1,0x19,0x64 | 0x80); // set PMD to 0x64 to get reasonably close results
-			generate(1,0x19,0x7f);
+			generate(1,0x19,0x10);		// according to Natt Akuma, this is a good fit for AMD.
 		}
 		$ignore = true; // we've already written everything from here. No need to call translate_opn.
 		break;

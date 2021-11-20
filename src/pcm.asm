@@ -1,11 +1,16 @@
 ; x16.inc by SlithyMatt - slightly modified for multi-revision support
 .include "x16.inc"
+.include "zsm.inc"
 
-.ident(.sprintf("%s%d","helloworld",X16_VERSION)) := helloworld
-.export	.ident(.sprintf("%s%d","helloworld",X16_VERSION))
+EXPORT_TAGGED "helloworld"
 
 ; ---------------------------------------------------------------------------
-; Hello World:	prints "hello world"
+; Hello World:	prints a message to the screen.
+;
+; This is just a placeholder left over from when I first started using
+; multi-file soruces for this project. I should remove it, as there's
+; definitely no intention to have "hello world" as a function in zsound. :)
+;
 ; ---------------------------------------------------------------------------
 
 .segment  "CODE"

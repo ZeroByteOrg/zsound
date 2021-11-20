@@ -1,28 +1,15 @@
 .include	"x16.inc"
 .include	"zsm.inc"
 
-; import data (zeropage music pointer) and stopmusic routine
-; symbols were exported as e.g. data38 or data39. Import the appropriate
-; one, and alias it without the revision suffix.
-; e.g.: data := data38
-
 ; IMPORTS / EXPORTS:
 
-; data is a zeropage symbol, so import it in that segment....
 .segment "ZEROPAGE"
-.import	.ident(.sprintf("%s%d","data",X16_VERSION))
-data	:=	.ident(.sprintf("%s%d","data",X16_VERSION))
+IMPORT_TAGGED "data"
 
-; everything else can be referenced as absolutes
+
 .segment "CODE"
-
-; import stopmusic routine
-.import	.ident(.sprintf("%s%d","stopmusic",X16_VERSION))
-stopmusic	:=	.ident(.sprintf("%s%d","stopmusic",X16_VERSION))
-
-; export nextdata routine
-.ident(.sprintf("%s%d","nextdata",X16_VERSION)) := nextdata
-.export	.ident(.sprintf("%s%d","nextdata",X16_VERSION))
+IMPORT_TAGGED	"stopmusic"
+EXPORT_TAGGED	"nextdata"
 
 ;-----------------------------------------------------------------------
 ; nextdata

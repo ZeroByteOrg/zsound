@@ -2,22 +2,7 @@
 .include "x16.inc"
 .include "zsm.inc"
 
-; create revision-suffixed identifiers for the symbols being exported
-; e.g. init_player38 := init_player
-.ident(.sprintf("%s%d","patchym",X16_VERSION)) := patchym
-
-; export the revision-suffixed symbols
-.export	.ident(.sprintf("%s%d","patchym",X16_VERSION))
-
-
-;.if X16_VERSION = 38
-;	.export		patchym38
-;.else
-;	.export		patchym39
-;.endif
-;
-;patchym38	:=	patchym
-;patchym39	:=	patchym
+EXPORT_TAGGED "patchym"
 
 .segment  "CODE"
 
