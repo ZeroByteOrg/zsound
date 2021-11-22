@@ -11,6 +11,9 @@
 	.import	.ident(.sprintf("%s%d","init_player",REV))
 	init_player	:=	.ident(.sprintf("%s%d","init_player",REV))
 
+	.import	.ident(.sprintf("%s%d","stepmusic",REV))
+	stepmusic	:=	.ident(.sprintf("%s%d","stepmusic",REV))
+
 	.import	.ident(.sprintf("%s%d","playmusic",REV))
 	playmusic	:=	.ident(.sprintf("%s%d","playmusic",REV))
 

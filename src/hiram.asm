@@ -14,11 +14,15 @@ EXPORT_TAGGED	"nextdata"
 ;-----------------------------------------------------------------------
 ; nextdata
 ;
+; no args. returns carry flag: 0=no error, 1=error
+;
+; affects: Accumulator
+;
 ; Advances the ZP pointer "data" by one byte through the HIRAM window.
 ; It is necessary to call this routine instead of the typical
 ; (ZP),Y method, as the data pointer could be pointing at the end of
-; the window at any given time, and if it advances past the end, it
-; must be wrapped back to $A000 and swap in the next bank.
+; the bank window at any given time, and if it advances past the end,
+; it must be wrapped back to $A000 and the next bank selected.
 ;
 
 .segment "CODE"
@@ -41,6 +45,7 @@ nextpage:	lda data+1		; advance the "page" address
 			beq	die			; out-of-memory error
 nobankwrap:
 			sta	data+1		; store the new "page" address
+			clc
 			rts				; done
 die:
 			; stop the music and return error (carry bit = 1)

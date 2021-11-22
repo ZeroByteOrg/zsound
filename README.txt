@@ -76,7 +76,7 @@ Using zsound.lib:
 	include zsound.inc in any assembly file(s) which reference zsound
 	call init_player (no arguments) at least once before using the library
 	call startmusic to set the desired ZSM song
-	call playmusic once per frame (60Hz)
+	call stepmusic once per frame (60Hz)
 	call stopmusic to halt playback (does not mute or release any voices)
 	build project with zsound.lib included as a component - e.g.:
 		cl65 -t cx16 -o MYPROG.PRG myprog.asm zsound.lib

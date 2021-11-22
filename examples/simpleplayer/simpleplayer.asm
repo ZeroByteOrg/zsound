@@ -11,10 +11,10 @@
 ; BGM39.ZSM uses reference pitch values for ~3.5MHz YM2151 clock.
 ; 			(Yamaha recommended value, used in r39+, Box16, and real X16 HW)
 ;
-; NOTE: This program COULD just call playmusic directly in the IRQ handler, as
+; NOTE: This program COULD just call stepmusic directly in the IRQ handler, as
 ;		it does nothing in the main loop otherwise. However, as an example of using
 ;		zsmplayer, it is best to go ahead and demonstrate how to properly call
-;		playmusic from the main loop, as playmusic clobbers VERA registers and
+;		stepmusic from the main loop, as stepmusic clobbers VERA registers and
 ;		is therefore unsafe to use during an IRQ.
 
 ; x16.inc by SlithyMatt - slightly modified for multi-revision support
