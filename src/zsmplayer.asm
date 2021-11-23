@@ -11,6 +11,8 @@ EXPORT_TAGGED "startmusic"
 EXPORT_TAGGED "stopmusic"
 EXPORT_TAGGED "data"
 EXPORT_TAGGED "playmusic"
+EXPORT_TAGGED "playmusic_IRQ"
+EXPORT_TAGGED "setmusicspeed"
 
 ZSM_HDR_SIZE	=	16	; does not include PRG header which isn't loaded
 ZSM_EOF			=	$80	; (equates to pause cmd, value=0)
@@ -52,21 +54,58 @@ zsm_steps	:= zsm_fracsteps + 1
 	inx
 @set_1:
 	lda player_table_lo,x
-	sta playmusic+1
+	sta music_player
 	lda player_table_hi,x
-	sta playmusic+2
+	sta music_player+1
 .endmacro
 
 ;--------------------------------------------------------------------------
 
 .segment "CODE"
 playmusic:
-	jmp	step_byte	; startmusic will modify this to point to the
-					; fastest steps-per-frame shell or directly to
-					; stepmusic if HZ=60
+;			; early exit if delay=0 (music not playing).
+			lda delay
+			beq done
+			jmp	(music_player)
+done:		rts
+
+playmusic_IRQ:
+			lda delay
+			beq done
+			; save the current state of VERA CTRL register
+			lda	VERA_ctrl
+			sta V4
+			stz VERA_ctrl	; use data0 for player routine
+			; save the current state of VERA addr registers for data0
+			lda VERA_addr_low
+			sta	V3
+			lda VERA_addr_high
+			sta V2
+			lda VERA_addr_bank
+			sta V1
+music_player := (* + 1)
+			jsr step_byte	; <-- startmusic will modify this to point at the
+							;     fastest steps-per-frame shell for stepmusic
+
+			; restore VERA data port state and ctrl register
+V1 := (*+1)
+			lda #$FF	; vera backups stored here as self-mod code
+			sta VERA_addr_bank
+V2 := (*+1)
+			lda #$FF
+			sta VERA_addr_high
+V3 := (*+1)
+			lda	#$FF
+			sta VERA_addr_low
+V4 := (*+1)
+			lda	#$FF
+			sta VERA_ctrl
+			rts
+			
 
 player_table_lo:	.byte <stepmusic, <step_byte, <step_word
 player_table_hi:	.byte >stepmusic, >step_byte, >step_word
+
 	
 
 ; ---------------------------------------------------------------------------
@@ -320,15 +359,17 @@ add_step:
 ; Affects: (none)
 ; ---------------------------------------------------------------------------
 ;
-; Halts music playback.
-; TODO: release the voices used by the tune
-;       rquires implementation of the channel mask from the ZSM header
-;		vgm2zsm now writes the header. Next is adding support here
+; Halts music playback, clears music channel mask.
+; TODO: silence the voices used by the tune.
 ;
 
 .segment "CODE"
 .proc stopmusic: near
 			stz	delay
+			; TODO: silence the voices used by the music
+			stz zsm_chanmask
+			stz zsm_chanmask+1
+			stz zsm_chanmask+2
 			rts
 .endproc
 
@@ -451,10 +492,6 @@ loopsong:
 ;
 
 .proc step_word: near
-;			; early exit if called when data points at EOF.
-;			lda (data)
-;			cmp #ZSM_EOF
-;			beq done
 			; add 0.fracsteps to zsm_steps.zsm_fracsteps, storing result
 			; in ZP steps.fracsteps
 			clc
@@ -497,10 +534,9 @@ done:		rts
 ; chance of carry from frac causing an overflow in a single byte)
 ;
 .proc step_byte: near
-;			; early exit if called when data points at EOF.
-;			lda (data)
-;			cmp #ZSM_EOF
-;			beq done
+;			; early exit if called when delay=0 (music not playing)
+			lda delay
+			beq done
 			clc
 			lda zsm_fracsteps
 			adc fracstep

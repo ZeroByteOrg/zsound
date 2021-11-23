@@ -43,8 +43,18 @@
 */
 
 $rest_index = null;
-$opts = getopt('4bf', [], $rest_index);
+$opts = getopt('4bft::', [], $rest_index);
 $filenames = array_slice($argv, $rest_index);
+
+if (isset($opts['t']) && ($opts['t'] !== false)) {
+	if (is_numeric($opts['t']) && ($opts['t'] <= 0xffff) && ($opts['t'] >= 60))
+		define("ZSMTICKRATE",floor($opts['t']));
+	else {
+		printf("Invalid tick rate specified. Must be 60..%d\n",0xffff);
+		exit(1);
+	}
+}
+else define("ZSMTICKRATE",60); // use 60Hz by default.
 
 if (isset($filenames[0]))
 	define("FILENAME", $filenames[0]);
@@ -54,11 +64,14 @@ else
 	exit(1);
 }
 
-define("OFFSET", 0x34);
+
+define("OFFSET", 0x34);  // default start-of-data offset in VGM file.
 define("MAXPAUSE",0x7F); // testing whether any pause frames of $7F exist.
-//define("MAXPAUSE",0x7E); // pause of 0x7e = end of data stream
-define("PERLINE",16); // # of data bytes to print per line
-define("TICKSPERFRAME",735);
+define("PERLINE",16);    // # of data bytes to print per line
+
+//define("ZSMTICKRATE",60); // generate ZSM files with 60hz tick rate
+define("TICKSPERFRAME",intdiv(44100,ZSMTICKRATE));
+
 if (isset($filenames[1]))
 	define ("OUTFILENAME", $filenames[1]);
 else {
@@ -395,6 +408,8 @@ function out_zsm($ofile)
 	$songdata[6] = $channelsused['ym'];
 	$songdata[7] = $channelsused['psg'] & 0xff;
 	$songdata[8] = $channelsused['psg'] >> 8;
+	$songdata[9] = ZSMTICKRATE & 0xff; 
+	$songdata[10] = (ZSMTICKRATE >> 8) & 0xff;
 	DEBUG("YM channel mask: %s\n", tobin($channelsused['ym']));
 	DEBUG("PSG channel mask: %s\n", tobin($channelsused['psg']));
 	$of = fopen($ofile, "w+b");
@@ -794,9 +809,14 @@ function translate_opn($a, $d, $base, $ofst)
 }
 
 $filesize=filesize(FILENAME);
-$f = fopen(FILENAME, "r");
-$binary=fread($f,$filesize);
-fclose($f);
+if ($f = fopen(FILENAME, "r")) {
+	$binary=fread($f,$filesize);
+	fclose($f);
+}
+else {
+	printf("Unable to open VGM file %s\n",FILENAME);
+	exit(1);
+}
 
 $vgm=unpack(sprintf('C%d',$filesize),$binary);
 
