@@ -24,6 +24,16 @@
 	bmi :-
 .endmacro
 
+.macro VERA_SELECT_PSG
+	lda #$FE
+	and VERA_ctrl	; clear bit0 of CTRL register to select data0
+	sta VERA_ctrl
+	lda #$01		; bank 1, 0 stride
+	sta VERA_addr_bank
+	lda #$f9		; PSG are on page $F9 of VRAM
+	sta VERA_addr_high
+.endmacro
+
 ; Since this project is currently designed to build both r38 and r39 compatible
 ; targets, the individual sources need to export/import different symbols.
 ; These macros help keep the import/export lists in the various sources easy-to-read.

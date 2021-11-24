@@ -43,6 +43,7 @@ zsm_steps	:= zsm_fracsteps + 1
 	cmp #$ff
 	beq	@set_16			; if frac > 0 and lo-byte=255, there will be some frames
 						; with 256 steps, so use step_word
+	bra @set_8			; else use step_byte
 @check_60hz:
 	lda zsm_steps
 	cmp #1
@@ -72,6 +73,8 @@ done:		rts
 playmusic_IRQ:
 			lda delay
 			beq done
+			lda RAM_BANK
+			sta V5
 			; save the current state of VERA CTRL register
 			lda	VERA_ctrl
 			sta V4
@@ -100,6 +103,9 @@ V3 := (*+1)
 V4 := (*+1)
 			lda	#$FF
 			sta VERA_ctrl
+V5 := (*+1)
+			lda #$FF
+			sta RAM_BANK
 			rts
 			
 
@@ -167,10 +173,12 @@ dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 .proc startmusic: near
 			; ensure music does not attempt to play due to an IRQ
 			stz delay
-			; store the passed arguments into data pointer and a tmp space
-			sta data + SONGPTR::bank
-			stx data + SONGPTR::addr
-			sty data + SONGPTR::addr+1
+			; store the passed arguments into the ZP data pointer
+			; and into a tmp space so it's available later to calculate
+			; the loop offset relative to the load point.
+			sta data + SONGPTR::bank	; A = ZSM starting bank
+			stx data + SONGPTR::addr	; X = ZSM bank window address lo byte
+			sty data + SONGPTR::addr+1	; Y = ZSM bank window address hi byte
 			sta tmp + SONGPTR::bank
 			stx tmp + SONGPTR::addr
 			sty tmp + SONGPTR::addr+1
@@ -178,7 +186,7 @@ dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 			ldx RAM_BANK
 			phx		; save current BANK to restore later
 			sta RAM_BANK
-			; copy the loop pointer from the header data into main memory
+			; copy the loop offset from the header data into main memory
 			lda (data)
 			sta loop_pointer + SONGPTR::addr
 			jsr nextdata
@@ -193,41 +201,46 @@ dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 			jsr nextdata
 			jsr nextdata
 			; copy channel mask out of banked memory
-			ldx #3
+			ldx #0
 :			lda (data)
 			sta zsm_chanmask,x
 			jsr nextdata
-			dex
-			bne :-
+			inx
+			cpx	#3
+			bcc :-
+			
 			; get song playback rate and convert to ticks/frame
 			lda (data)
-			tax
+			tax				; X is the low byte argument to setmusicspeed
 			jsr nextdata
 			lda (data)
-			tay
+			tay				; Y is the hi byte argument to setmusicspeed
 			jsr nextdata
 			jsr setmusicspeed
+			
 			; move pointer to the first byte of music data
-			ldx #5
+			ldx #5			; currently 5 bytes of reserved (unused) space
 :			jsr nextdata
 			dex
 			bne :-
+			
 			; check if there is a loop or not
 			lda #$FF
 			cmp loop_pointer + SONGPTR::bank
 			beq	done
-			; add load address to loop pointer
+
+			; If the song loops, add loop offset to load address
 			clc
 			lda tmp + SONGPTR::addr
 			adc loop_pointer + SONGPTR::addr
 			sta loop_pointer + SONGPTR::addr
 			lda loop_pointer + SONGPTR::addr + 1
 			cmp #$20
-			bcs die ; invalid loop data >= $2000 
+			bcs die	; invalid loop data >= $2000 
 			adc tmp + SONGPTR::addr + 1
-			cmp #$c0
-			bcc	calculate_bank
-			sbc #$20
+			cmp #$c0	; see if adjusted location exceeds bank window
+			bcc	calculate_bank	; if not, continue by calculating bank of loop point
+			sbc #$20			; if so, wrap the offset address, and bank pointer++
 			inc loop_pointer + SONGPTR::bank
 calculate_bank:
 			sta loop_pointer + SONGPTR::addr + 1
@@ -239,7 +252,7 @@ calculate_bank:
 			sta loop_pointer + SONGPTR::bank
 			
 done:		pla
-			sta RAM_BANK
+			sta RAM_BANK	; restore the RAM_BANK to what it was before
 			lda #1
 			sta delay	; start the music
 			clc			; return clear carry flag to indicate success
@@ -249,7 +262,7 @@ die:
 			sta RAM_BANK
 			stz delay	; ensure the music is not playing
 			sec			; return carry flag set to indicate failure
-			rts	
+			rts
 .endproc
 
 ; ---------------------------------------------------------------------------
@@ -356,7 +369,7 @@ add_step:
 ;
 ; Arguments: (none)
 ; Returns: (none)
-; Affects: (none)
+; Affects: A,X,Y
 ; ---------------------------------------------------------------------------
 ;
 ; Halts music playback, clears music channel mask.
@@ -367,7 +380,53 @@ add_step:
 .proc stopmusic: near
 			stz	delay
 			; TODO: silence the voices used by the music
+			ldx #0
+			lda #$20
+@YMloop:	ror zsm_chanmask
+			bcc @nextYM
+			YM_BUSY_WAIT
+			ldy #08
+			sty YM_reg
+			nop
+			stx	YM_data
+			YM_BUSY_WAIT
+			sta YM_reg
+			nop
+			stz YM_data
+@nextYM:	inx
+			inc
+			cpx	#8
+			bne @YMloop
 			stz zsm_chanmask
+			
+			; set up VERA data0 port to sweep through the PSG volumes.
+			VERA_SELECT_PSG
+			; VERA_SELECT_PSG macro sets step=0, we need step=4
+			; (will fix macro later to allow optional step=x argument)
+			lda #$31
+			sta VERA_addr_bank	; set step=4
+			lda #$c2			; point data0 at volume register of PSG channel 0.
+			sta VERA_addr_low
+			
+			ldy #0
+@PSGloop2:	lda zsm_chanmask+1,y
+			ldx #8			; 8 voices per byte of chanmask
+@PSGloop1:	ror
+			bcc @skipPSGvoice
+			stz VERA_data0	
+			bra @nextPSG
+@skipPSGvoice:
+			bit VERA_data0	; BIT command doesn't modify A, but reads from mem
+							; which will cause VERA to step to next voice w/o
+@nextPSG:					; changing anything.
+			dex
+			bne @PSGloop1
+			iny
+			cpy	#2
+			bcc @PSGloop2
+			
+			; music channels are now silenced.
+			; Clear the MASK bits.
 			stz zsm_chanmask+1
 			stz zsm_chanmask+2
 			rts
@@ -404,13 +463,7 @@ add_step:
 			lda data + SONGPTR::bank
 			sta RAM_BANK
 			; point VERA to PSG page / set data port = 0 in CTRL
-			lda #$FE
-			and VERA_ctrl	; clear bit0 of CTRL register to select data0
-			sta VERA_ctrl
-			lda #$01		; bank 1, 0 stride
-			sta VERA_addr_bank
-			lda #$f9		; PSG are on page $F9 of VRAM
-			sta VERA_addr_high
+			VERA_SELECT_PSG
 			bra nextnote
 
 noop:		rts
