@@ -71,8 +71,10 @@ playmusic:
 done:		rts
 
 playmusic_IRQ:
+			; early exit if delay=0 (music not playing).
 			lda delay
 			beq done
+			; save the current active RAM bank
 			lda RAM_BANK
 			sta V5
 			; save the current state of VERA CTRL register
@@ -107,8 +109,11 @@ V5 := (*+1)
 			lda #$FF
 			sta RAM_BANK
 			rts
-			
 
+; jump table for playmusic / playmusic_IRQ to use.
+; organized as low bytes together, high bytes together to facilitate
+; easy lda table,x indexing - startmusic copies the appropriate routine
+; address into the JMP () statement of the players.
 player_table_lo:	.byte <stepmusic, <step_byte, <step_word
 player_table_hi:	.byte >stepmusic, >step_byte, >step_word
 
@@ -413,7 +418,7 @@ add_step:
 			ldx #8			; 8 voices per byte of chanmask
 @PSGloop1:	ror
 			bcc @skipPSGvoice
-			stz VERA_data0	
+			stz VERA_data0
 			bra @nextPSG
 @skipPSGvoice:
 			bit VERA_data0	; BIT command doesn't modify A, but reads from mem

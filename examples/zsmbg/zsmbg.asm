@@ -29,18 +29,18 @@ uninstall:
 	stz irq_set
 	cli
 	rts
-	
+
 kernal_irq:
 	.word	$0		; storage for the original IRQ vector.
-	
+
 irq_set:
 	.byte	$0		; use this to avoid setting the IRQ handler multiple times
 					; and losing the original vector's destination.
-					
+
 irq_handler:
 	jsr	playmusic_IRQ
 	jmp	(kernal_irq)
-	
+
 init_background_player:
 	jsr init_player
 	lda irq_set		; check whether the IRQ has been configured already
