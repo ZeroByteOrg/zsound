@@ -286,6 +286,10 @@ die:
 ; step functions. stepmusic = once. step_word treats zsm_steps as a 16.8 value
 ; and step_byte treats it as an 8.8 (used if ticks/frame < 255)
 ;
+; note that the default=60Hz for files with no Hz specified. We could add some
+; code to just write 0001.00 into memory and exit early, but I've chosen to
+; just let the routine run in order to optimize a bit for code size.
+;
 .proc setmusicspeed: near
 			; X/Y = tick rate (Hz) - divide by 60 and store to zsm_steps
 			; use the ZP variable as tmp space
@@ -334,6 +338,7 @@ hz_to_tickrate:
 			lda step+1
 			adc #0
 			sta zsm_steps+1
+setplayer:
 			CHOOSE_PLAYER
 			rts
 			
