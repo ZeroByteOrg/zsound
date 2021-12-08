@@ -121,8 +121,8 @@ done:
 	lda RAM_BANK
 	sta BANK_SAVE
 	; address:bank
-loop1:
 	ldy #2
+loop1:
 	lda (TABLE),y
 	sta pcm_ptr,y
 	dey
