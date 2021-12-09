@@ -3,7 +3,10 @@
 
 ; ZP variables potentially used in zsound
 pcm_ptr:		.res 2
-pcmbank:		.res 1
+pcm_bank:		.res 1
+end_ptr:		.res 2
+end_bank:		.res 1
+
 pcmbytes:		.res 2
 pcmblit:		.res 2
 ;active_digi:	.res 1	; moved to BSS for now
@@ -61,15 +64,6 @@ digi_start:
 active_digi:	.res 1
 digi:			.tag DIGITAB
 
-.ifdef VRAMLOG
-VLBASE = $10000
-.segment "DATA"
-	VL_low:		.byte	<VLBASE
-	VL_high:	.byte	>VLBASE
-	VL_bank:	.byte	((^VLBASE) | $10)
-.endif
-
-
 ;---------------------------------------------------------------
 ; test shell
 ;---------------------------------------------------------------
@@ -89,38 +83,29 @@ coin_sound:
 	lda #1
 	jsr start_digi
 	rts
-	
-startup_tune:
-	ldy #1
-	lda pcmtab_lo,y
-	tax
-	lda pcmtab_hi,y
-	tay
-	lda #1
-	jsr start_digi
-	rts
-	
-.ifdef VRAMLOG
-wipe_vram:
-	sei
-	pha
-	phx
-	phy
-	VERA_SET_ADDR $10000,1
-	ldx #$cb
-	ldy #0
-:	stz VERA_data0
-	iny
-	bne :-
-	dex
-	bne :-
-	ply
-	plx
-	pla
-	cli
-	rts
-.endif
 
+;startup_tune:
+;	ldy #1
+;	lda pcmtab_lo,y
+;	tax
+;	lda pcmtab_hi,y
+;	tay
+;	lda #1
+;	jsr start_digi
+;	rts
+
+startup_tune:
+	ldx pcmtab_lo+1
+	stx pcmbytes
+	ldx pcmtab_hi+1
+	stx pcmbytes+1
+	ldy DIGITAB_LAST
+:	lda (pcmbytes),y
+	sta digi,y
+	dey
+	bpl :-
+	
+	
 ;---------------------------------------------------------------
 ; begin zsound PCM player module candidate code
 ;---------------------------------------------------------------
@@ -164,10 +149,6 @@ done:
 
 	NEWDIGI_PTR = pcmblit	; "rename" pmcblit for code readability
 
-.ifdef VRAMLOG
-	jsr wipe_vram
-.endif
-	
 	stx	NEWDIGI_PTR
 	sty NEWDIGI_PTR+1
 	tax
@@ -189,7 +170,7 @@ loop:
 	lda digi + DIGITAB::addr+1
 	sta pcm_ptr+1
 	lda digi + DIGITAB::bank
-	sta pcmbank
+	sta pcm_bank
 	lda digi + DIGITAB::cfg
 	ora #$80	; clear the FIFO when setting the PCM parameters.
 	sta VERA_audio_ctrl
@@ -222,6 +203,7 @@ loop:
 	bne :+
 end_of_digi:
 	stz active_digi		; ... if not, then deactivate digi player
+	rts
 :	sec
 	; call load_fifo with the lesser of totalbytes or bytesperframe
 	lda totalbytes
@@ -263,135 +245,90 @@ done:
 
 
 ;---------------------------------------------------------------
-; load_fifo: blits up to one page of PCM data into the FIFO.
+; load_fifo: 
 ;
-; Affects: A, X, Y
+; Arguments:
+;	.X/.Y = starting address
 ;
-; Arguments: none* (see description)
-; Returns: carry = 0: done | 1: not done
+; Setup:	Before calling, the current source RAM bank should be active
+;			and the ZP variables end_ptr,end_bank should be set.
 ;
-; Uses ZP var pcmbytes as the count of bytes to be transferred.
-; Performs one pass, stopping at either the page boundary or the
-; end-of-data (pcmblit=0) in which case it returns 0 in the carry flag.
-; 
-; This behavior is intended to keep the transfers page-aligned as much
-; as possible in order to reduce the extra CPU cycle overhead for
-; LDA (ZP),Y crossing page boundaries. Furthermore, it is done in a
-; single pass in order to allow programs to interleave the PCM writing
-; with other tasks, such as waiting on YM to become not-busy.
+; Affects:	If a bank wrap occurs, the current source RAM bank will
+;			be updated.
+;			
+; Returns:	CC if complete. CS if stop early for any reason.
+;			Modifies the digi's pointer in BSS memory (digi::addr)
+;
+; Copies PCM data into FIFO from starting address up to and including
+; an ending address specified in ZP. Updates the digi information's
+; pointer to point at the first un-copied byte.
+;
+; Exits early with noop if dst page >= $c0
+; Exits early if FIFO becomes full
 ;---------------------------------------------------------------
 .segment "CODE"
 .proc load_fifo: near
-	; early exit if no remaining data to transfer
-	jsr test_EOD	; sets carry flag 1=not done, 0=done.
-	bcs setup
-	rts
-setup:
-	lda RAM_BANK
-	sta BANK_SAVE
-.ifdef VRAMLOG
-	lda VERA_ctrl
-	pha
-	stz VERA_ctrl
-	lda VERA_addr_low
-	pha
-	lda VERA_addr_high
-	pha
-	lda VERA_addr_bank
-	pha
-	lda VL_low
-	sta VERA_addr_low
-	lda VL_high
-	sta VERA_addr_high
-	lda VL_bank
-	sta VERA_addr_bank
-.endif
-	; determine which is less: pcmbytes or bytes left in current page
-	sec
-	lda #0
-	sbc pcm_ptr
-	sta pcmblit
-	tay				; if pcmblit is smaller, then Y should be pcmblit
-	lda #0
-	adc #0
-	sta pcmblit+1	; sets hi byte=1 if 256 bytes on page (full page blit)
-	; pcmblit now = num bytes remaining on this page
-	
-	sec
-	lda pcmbytes
-	sbc pcmblit
-	lda pcmbytes+1
-	sbc pcmblit+1
-	bpl go			; pcmblit <= pcmbytes, so that's how many to copy
-	stz pcmblit+1
-	ldy pcmbytes
-	sty pcmblit
-go:
-	;copy number of bytes specified in pcmblit
-	; Y = low byte of pcmblit, which is $100 max
-	lda pcmbank
-	sta RAM_BANK
-	dey
-	beq last_byte
+
+.macro NEXTPAGE
+	inx
+	cpx #$c0
+	bne @nowrap
+	ldx #$a0
+	inc RAM_BANK
+@nowrap:
+	stx pcm_ptr+1
+.endmacro
+
+	lda #$c0		; avoid infinite loop from end ptr above bank window
+	cmp	end_ptr+1
+	bcs noop
+	lda end_ptr
+	sta STOPVAL
+	; initialize pcm_ptr aligned to current page.
+	stz pcm_ptr
+	stx pcm_ptr+1
+	bra continue
 loop:
-	; TODO:	add check for full FIFO
+	iny
+	bne continue
+	NEXTPAGE
+continue:
+	lda #$08
+	and VERA_isr	; is FIFO full?
+	bne stop_load
 	lda (pcm_ptr),y
-.ifdef VRAMLOG
-	sta VERA_data0
-.endif
 	sta VERA_audio_data
-	dey
+	; check whether this was the last byte to copy
+	cpy #$FF
+	STOPVAL = (*-1)	; self-mod target for the end address low-byte
 	bne loop
-last_byte:
-	lda (pcm_ptr),y
-.ifdef VRAMLOG
-	sta VERA_data0
-.endif
-	sta VERA_audio_data
-	; update PCM data pointer
+	cpx	end_ptr
+	bne loop
+	lda end_bank
+	cmp RAM_BANK
+	bcc loop
+	; point at the first byte after the final byte copied.
+	iny
+	bne done
+	NEXTPAGE
+done:
 	clc
-	lda pcmblit
-	adc pcm_ptr
-	sta pcm_ptr
-	lda pcmblit+1
-	adc pcm_ptr+1
-	cmp #$c0		; bank wrap if we ended up at $c000
-	bne nobankwrap
-	inc pcmbank
-	lda #$a0
-nobankwrap:
-	sta pcm_ptr+1
-	; update the pcmbytes counter and exit
+exit:
+	sty digi + DIGITAB::addr
+	stx digi + DIGITAB::addr+1
+	lda RAM_BANK
+	sta digi + DIGITAB::bank
+	clc
+noop:
+	rts
+stop_load:
 	sec
-	lda pcmbytes
-	sbc pcmblit
-	sta pcmbytes
-	lda pcmbytes+1
-	sbc pcmblit+1
-	sta pcmbytes+1
-	lda #$FF
-	BANK_SAVE := (*-1)
-	sta RAM_BANK
-.ifdef VRAMLOG
-	lda VERA_addr_bank
-	sta VL_bank
-	lda VERA_addr_high
-	sta VL_high
-	lda VERA_addr_low
-	sta VL_low
-	pla
-	sta VERA_addr_bank
-	pla
-	sta VERA_addr_high
-	pla
-	sta VERA_addr_low
-	pla
-	sta VERA_ctrl
-.endif
-	jmp test_EOD
+	bra exit
 .endproc
 
 ;---------------------------------------------------------------
+; This code might not be used after the new load_fifo is done...
+; remember to delete it if unused.
 .segment "CODE"
 .proc test_EOD: near
 	lda	pcmbytes
