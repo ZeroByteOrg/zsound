@@ -1,31 +1,36 @@
 .include "x16.inc"
 .segment "ZEROPAGE"
 
+; ZP variables potentially used in zsound
 pcm_ptr:		.res 2
 pcmbank:		.res 1
 pcmbytes:		.res 2
 pcmblit:		.res 2
-active_digi:	.res 1
+;active_digi:	.res 1	; moved to BSS for now
 
 ; for test program only
 pcmcfg:			.res 1
 pcmrate:		.res 1
 
-.struct PCMTAB
+.struct DIGITAB
 	addr		.addr
 	bank		.byte
 	cfg			.byte
-	perframe	.byte 2
-	size		.byte 3
+	perframe	.word
+	size		.word
+	sizehi		.byte
 	rate		.byte
 .endstruct
+DIGITAB_LAST		= DIGITAB::rate
 
-PCM_RATE_8000	= (8000/(25000000 >> 16))
+PCM_RATE_8000	= (8000/(25000000 >> 16)+1)
+PCM_RATE_12207	= 32
 
 .segment "RODATA"
 pcmtab_lo:	.byte	<digi_coin, <digi_start
 pcmtab_hi:	.byte	>digi_coin, >digi_start
 
+.if 0
 digi_coin:
 	.addr	$a000
 	.byte	1
@@ -39,16 +44,36 @@ digi_start:
 	.byte	1
 	.byte	$0f
 	.word	133
-	.word	33830
+	.word	38830
 	.byte	0
 	.byte	PCM_RATE_8000
+.endif
+
+.if 0
+	.include "raw1cfg.inc"
+.endif
+
+.if 1
+	.include "raw2cfg.inc"
+.endif
 
 .segment "BSS"
-bytesperframe:	.res 2
-totalbytes:		.res 3
+active_digi:	.res 1
+digi:			.tag DIGITAB
+
+.ifdef VRAMLOG
+VLBASE = $10000
+.segment "DATA"
+	VL_low:		.byte	<VLBASE
+	VL_high:	.byte	>VLBASE
+	VL_bank:	.byte	((^VLBASE) | $10)
+.endif
 
 
 ;---------------------------------------------------------------
+; test shell
+;---------------------------------------------------------------
+
 .segment "STARTUP"
 	jmp	init
 	jmp coin_sound
@@ -57,9 +82,9 @@ totalbytes:		.res 3
 	
 coin_sound:
 	ldy #0
-	lda pcmtab_hi,y
-	tax
 	lda pcmtab_lo,y
+	tax
+	lda pcmtab_hi,y
 	tay
 	lda #1
 	jsr start_digi
@@ -67,14 +92,37 @@ coin_sound:
 	
 startup_tune:
 	ldy #1
-	lda pcmtab_hi,y
-	tax
 	lda pcmtab_lo,y
+	tax
+	lda pcmtab_hi,y
 	tay
 	lda #1
 	jsr start_digi
 	rts
+	
+.ifdef VRAMLOG
+wipe_vram:
+	sei
+	pha
+	phx
+	phy
+	VERA_SET_ADDR $10000,1
+	ldx #$cb
+	ldy #0
+:	stz VERA_data0
+	iny
+	bne :-
+	dex
+	bne :-
+	ply
+	plx
+	pla
+	cli
+	rts
+.endif
 
+;---------------------------------------------------------------
+; begin zsound PCM player module candidate code
 ;---------------------------------------------------------------
 .segment "CODE"
 irqhandler:
@@ -113,37 +161,45 @@ done:
 ;---------------------------------------------------------------
 .segment "CODE"
 .proc start_digi: near
-	TABLE = pcmblit
-	stx	TABLE
-	sty TABLE+1
+
+	NEWDIGI_PTR = pcmblit	; "rename" pmcblit for code readability
+
+.ifdef VRAMLOG
+	jsr wipe_vram
+.endif
+	
+	stx	NEWDIGI_PTR
+	sty NEWDIGI_PTR+1
 	tax
-	jsr stop_pcm
+	jsr stop_pcm	; do we really need a full STOP to go by? Probably not.
 	lda RAM_BANK
 	sta BANK_SAVE
-	; address:bank
-	ldy #2
-loop1:
-	lda (TABLE),y
-	sta pcm_ptr,y
+	stx RAM_BANK
+	; copy the digi table data into the active digi table memory.
+	ldy #DIGITAB_LAST
+loop:
+	lda (NEWDIGI_PTR),y
+	sta digi,y
 	dey
-	bpl loop1
-	ldy #3
-	; audio_ctrl (PCM format)
-	lda (TABLE),y
-	ora #$80
+	bpl loop
+	
+	; set up the pointers and indexes, etc for playback.
+	lda digi + DIGITAB::addr
+	sta pcm_ptr
+	lda digi + DIGITAB::addr+1
+	sta pcm_ptr+1
+	lda digi + DIGITAB::bank
+	sta pcmbank
+	lda digi + DIGITAB::cfg
+	ora #$80	; clear the FIFO when setting the PCM parameters.
 	sta VERA_audio_ctrl
-loop2:
-	iny
-	cpy #PCMTAB::rate
-	lda (TABLE),y
-	beq :+
-	sta bytesperframe,y
-	bra loop2
-:	stx active_digi
-	pha
 	; pre-load the FIFO
-	jsr play_pcm	; convert this into 2 calls to load_fifo or a step_pcm frontend.
-	pla
+	dec active_digi
+	jsr play_pcm	; preload 2 frames' worth of samples into the FIFO.
+	;jsr play_pcm
+	;jsr play_pcm
+	; enable VERA PCM playback
+	lda digi + DIGITAB::rate
 	sta VERA_audio_rate
 	lda #$FF
 	BANK_SAVE := (*-1)
@@ -154,16 +210,25 @@ loop2:
 ;---------------------------------------------------------------
 .segment "CODE"
 .proc play_pcm: near
-	lda	#$ff
-	cmp active_digi
+
+	totalbytes = digi + DIGITAB::size
+	bytesperframe = digi + DIGITAB::perframe
+	
+	lda	active_digi		; quick check whether digi player is active
 	beq done
-	sec
+	lda totalbytes		; check whether any bytes remain in the digi
+	ora totalbytes+1
+	ora totalbytes+2
+	bne :+
+end_of_digi:
+	stz active_digi		; ... if not, then deactivate digi player
+:	sec
 	; call load_fifo with the lesser of totalbytes or bytesperframe
 	lda totalbytes
 	sbc bytesperframe
 	lda totalbytes+1
 	sbc bytesperframe+1
-	bmi send_totalbytes
+	bcc send_totalbytes
 send_bytesperframe:
 	lda bytesperframe
 	sta pcmbytes
@@ -177,6 +242,20 @@ send_totalbytes: ; i.e. the last frame's worth of samples.
 	sta pcmbytes+1
 call_load_fifo:
 	jsr	load_fifo
+	php
+	; subtract bytes transferred (pcmblit) from totalbytes
+	sec
+	lda totalbytes
+	sbc pcmblit
+	sta totalbytes
+	lda totalbytes+1
+	sbc pcmblit+1
+	sta totalbytes+1
+	lda totalbytes+2
+	sbc #0
+	sta totalbytes+2
+	; note: wouldn't carry=clear here mean the digi is done?
+	plp
 	bcs	call_load_fifo
 done:
 	rts
@@ -209,8 +288,25 @@ done:
 	rts
 setup:
 	lda RAM_BANK
+	sta BANK_SAVE
+.ifdef VRAMLOG
+	lda VERA_ctrl
 	pha
-	; determine which is less: pcmblit or bytes left in current page
+	stz VERA_ctrl
+	lda VERA_addr_low
+	pha
+	lda VERA_addr_high
+	pha
+	lda VERA_addr_bank
+	pha
+	lda VL_low
+	sta VERA_addr_low
+	lda VL_high
+	sta VERA_addr_high
+	lda VL_bank
+	sta VERA_addr_bank
+.endif
+	; determine which is less: pcmbytes or bytes left in current page
 	sec
 	lda #0
 	sbc pcm_ptr
@@ -218,7 +314,8 @@ setup:
 	tay				; if pcmblit is smaller, then Y should be pcmblit
 	lda #0
 	adc #0
-	sta pcmblit+1	; pcmblit = num bytes remaining on this page
+	sta pcmblit+1	; sets hi byte=1 if 256 bytes on page (full page blit)
+	; pcmblit now = num bytes remaining on this page
 	
 	sec
 	lda pcmbytes
@@ -230,6 +327,8 @@ setup:
 	ldy pcmbytes
 	sty pcmblit
 go:
+	;copy number of bytes specified in pcmblit
+	; Y = low byte of pcmblit, which is $100 max
 	lda pcmbank
 	sta RAM_BANK
 	dey
@@ -237,11 +336,17 @@ go:
 loop:
 	; TODO:	add check for full FIFO
 	lda (pcm_ptr),y
+.ifdef VRAMLOG
+	sta VERA_data0
+.endif
 	sta VERA_audio_data
 	dey
 	bne loop
 last_byte:
 	lda (pcm_ptr),y
+.ifdef VRAMLOG
+	sta VERA_data0
+.endif
 	sta VERA_audio_data
 	; update PCM data pointer
 	clc
@@ -264,8 +369,25 @@ nobankwrap:
 	lda pcmbytes+1
 	sbc pcmblit+1
 	sta pcmbytes+1
-	pla
+	lda #$FF
+	BANK_SAVE := (*-1)
 	sta RAM_BANK
+.ifdef VRAMLOG
+	lda VERA_addr_bank
+	sta VL_bank
+	lda VERA_addr_high
+	sta VL_high
+	lda VERA_addr_low
+	sta VL_low
+	pla
+	sta VERA_addr_bank
+	pla
+	sta VERA_addr_high
+	pla
+	sta VERA_addr_low
+	pla
+	sta VERA_ctrl
+.endif
 	jmp test_EOD
 .endproc
 
@@ -290,7 +412,8 @@ notfinished:
 	stz VERA_audio_rate
 	lda #$80
 	sta VERA_audio_ctrl
-	lda #$ff
-	sta active_digi
+	stz active_digi
+	stz pcmbytes
+	stz pcmbytes+1
 	rts
 .endproc
