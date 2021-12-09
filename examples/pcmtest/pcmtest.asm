@@ -104,7 +104,7 @@ startup_tune:
 	sta digi,y
 	dey
 	bpl :-
-	
+	;;;; continue here
 	
 ;---------------------------------------------------------------
 ; begin zsound PCM player module candidate code
