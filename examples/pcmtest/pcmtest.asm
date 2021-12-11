@@ -322,7 +322,6 @@ copy_byte:
 	bmi early_exit
 	lda (pcm_ptr),y
 	sta VERA_audio_data
-	nop
 	; advance pointer to the next byte, do bank wrap if necessary
 	iny
 	bne loop
