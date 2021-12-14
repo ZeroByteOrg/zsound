@@ -2,11 +2,32 @@
 
 .segment "ZEROPAGE"
 
-; MEMO TO SELF: The blit routine is STILL bugging out on some case or other and
-; jumping into the BRK whereby a negative number of bytes written to FIFO is
-; being computed. Not sure what I'm doing wrong - but that's where to resume
-; debugging later.
-
+; This one works properly. It uses pages-per-frame to drive the FIFO blit.
+; The idea is to fill the FIFO and let the FIFO-Full bit govern the playback
+; rate, and to reach this state by only loading slightly more data than
+; necessary in order to fill the FIFO. This seems to work as designed, but
+; has a few issues: With a full FIFO, it will be difficult to determine when
+; audio playback is truly finished, as the "playing state" byte (active_digi)
+; will be >= 0 once the PCM data has been completely loaded into FIFO.
+; The goal is:
+; active_digi < 0: FIFO is loading
+; active_digi = 0: idle
+; active_digi > 0: FIFO draining.
+;
+; computing this last value may be expensive, and doing so when a digi is triggered
+; seems to be a bad time, as this is when there may be a CPU spike due to the initial
+; blit of data - adding more overhead here means that triggering digis is an even more
+; cpu-intensive operation, as the buffer must be preloaded before starting VERA playback
+;
+; Overall, this functionality is workable, but I'm thinking it might make more sense to
+; do a minimum buffer algorithm so that PCM playback should be done roughly one frame
+; after the FIFO load finishes. This will be easier to determine whether a new digi would
+; be cutting off the end of a previous digi, or whether it's time to trigger another digi
+; if the program wants to do something like chain various sample segments together to create
+; a single audio stream. This latter functionality would be a bit challenging to accomplish
+; cleanly in a minimized buffer strategy, as it would likely result in buffer underruns
+; between digi segments.
+; I guess that's the challenge of engineering, right?
 
 
 ; ZP variables potentially used in zsound
@@ -25,14 +46,15 @@ pcmblit:		.res 2
 pcmcfg:			.res 1
 pcmrate:		.res 1
 
+; bare minimum info needed in a data file: VERA_CTRL, RATE, length
 .struct DIGITAB
 	addr		.addr
 	bank		.byte
-	cfg			.byte
-	perframe	.byte
-	size		.word
-	sizehi		.byte
-	rate		.byte
+	cfg			.byte	; VERA_audio_ctrl value
+	perframe	.byte	; pages to write per frame
+	size		.word	; 24bit digi size
+	sizehi		.byte	; ...
+	rate		.byte	; VERA_audio_rate
 .endstruct
 DIGITAB_LAST		= DIGITAB::rate
 
@@ -76,7 +98,7 @@ digi_start:
 	.byte	1
 	.byte	$0f
 ;	.byte	2
-	.byte	8
+	.byte	2
 	.word	51620
 	.byte	0
 	.byte	PCM_RATE_12207
@@ -103,6 +125,8 @@ filename_len = (*-filename)
 	LOADTO = $a000
 	
 	; set BANKRAM to the first bank where song should load
+	lda loaded
+	bne skipload
 	lda	#DIGI_BANK
 	sta	RAM_BANK
 	; prepare for call to SETNAM Kernal routine
@@ -122,9 +146,10 @@ filename_len = (*-filename)
 	jsr LOAD
 	
 	jsr	init
+	stz loaded
+skipload:
 	jmp startup_tune
-forever:
-	bra forever
+loaded:	.byte $00
 	
 coin_sound:
 	ldy #0
@@ -272,7 +297,7 @@ send_totalbytes: ; i.e. the last frame's worth of samples.
 	lda pagesperframe
 	sta active_digi
 	bra exit
-noop:	; note - this is branced to from beginning of routine. keep it in range
+noop:	; note - this is branched to from beginning of routine. keep it in range
 	beq :+
 	dec active_digi
 :	rts
@@ -282,13 +307,13 @@ send_pagesperframe:
 	ldx #0
 	jsr	load_fifo
 	; update the pcmtab 
+update_totalbytes:
 	lda pcm_ptr
 	sta digi_addr
 	lda pcm_ptr+1
 	sta digi_addr+1
 	lda RAM_BANK
 	sta digi_bank
-update_totalbytes:
 	sec
 	lda totalbytes
 	sbc pcmbytes
@@ -339,7 +364,7 @@ exit:
 ;	bne copy_byte
 ;	cmp #0
 ;	beq finished	; why would you DO that?
-	jmp check_done
+	jmp copy_byte
 
 loop_bankwrap:
 	lda #$a0
@@ -388,16 +413,13 @@ fifo_full:
 	sec
 	lda bytes_requested
 	sbc pcmbytes
-	adc #1	; we dec'd X before determining whether FIFO was full
+	;adc #1	; we dec'd X before determining whether FIFO was full
 	sta pcmbytes
 	lda bytes_requested+1
 	sbc pcmbytes+1
 	sta pcmbytes+1
-	bcc wtf
 	sec
 	rts
-wtf:
-	brk
 
 ; for zsound - integrate this with the library's memory instead of putting it here.
 bytes_requested: .byte 0,0
