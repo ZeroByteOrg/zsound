@@ -148,12 +148,15 @@ bad_rate:
 	fracframe		= digi + PCMSTATE::byterate_f
 
 	lda	active_digi		; quick check whether digi player is active
+	
+	beq noop
 	bmi :+
 	dec active_digi
+noop:
 	rts
-:
+
 	; precalculate the fractional frame accumulation, store in pcm_pages as tmp.
-	clc
+:	clc
 	stz pcm_pages
 	lda frac_bytes
 	adc fracframe
