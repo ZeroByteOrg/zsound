@@ -1,6 +1,7 @@
 ; x16.inc by SlithyMatt - slightly modified for multi-revision support
 .include "x16.inc"
-.include "zsm.inc"
+;.include "zsm.inc"
+.include "macros.inc"
 
 EXPORT_TAGGED "patchym"
 

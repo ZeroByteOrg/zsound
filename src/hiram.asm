@@ -1,5 +1,6 @@
 .include	"x16.inc"
 .include	"zsm.inc"
+.include	"macros.inc"
 
 ; IMPORTS / EXPORTS:
 

@@ -3,7 +3,7 @@
 .endif
 
 	; import symbols as symbol + REV  (e.g. helloworld38)
-	; alias them with the non-rev symbol (i.e. helloworld -> helloworld38)
+	; alias them with the non-rev symbol (i.e. helloworld := helloworld38)
 
 
 	.import	.ident(.sprintf("%s%d","helloworld",REV))
@@ -42,7 +42,7 @@
 ; registers w/o fixing them (for speed reasons). If your program
 ; is designed to run the music player during an IRQ, use one of the IRQ-safe 
 ; wrapper functions that save and restore VERA before calling this
-; core routine.
+; core routine, or else be sure to save the states of the affected VERA registers
 ;
 	.import	.ident(.sprintf("%s%d","stepmusic",REV))
 	stepmusic	:=	.ident(.sprintf("%s%d","stepmusic",REV))
@@ -55,7 +55,10 @@
 ; Affects: See stepmusic
 ; ---------------------------------------------------------------------------
 ;
-; Speed-correct frontend for stepmusic. Calls stepmusic however many times
+; 60hz frontend for stepmusic.
+; Call it once per frame to play ZSM music.
+;
+; Playmusic calls stepmusic however many times
 ; is determined from the ZSM tick rate header information. This function does not
 ; smooth time - i.e. it calls stepmusic N times in a row. For more accurate timing
 ; you should generate your own timing source and call stepmusic directly.
@@ -73,7 +76,7 @@
 ;
 ; IRQ-safe version of playmusic, which restores VERA registers.
 ; It does NOT save or restore the CPU registers. Your IRQ handler should do
-; those functions.
+; those functions if necessary.
 ; 
 	.import	.ident(.sprintf("%s%d","playmusic_IRQ",REV))
 	playmusic_IRQ	:=	.ident(.sprintf("%s%d","playmusic_IRQ",REV))
@@ -105,8 +108,8 @@
 ; Affects: (none)
 ; ---------------------------------------------------------------------------
 ;
-; Halts music playback, clears music channel mask.
-; TODO: silence the voices used by the tune.
+; Halts music playback, silences all voices used by the current tune,
+; and clears music channel mask
 ;
 	.import	.ident(.sprintf("%s%d","stopmusic",REV))
 	stopmusic	:=	.ident(.sprintf("%s%d","stopmusic",REV))

@@ -1,6 +1,7 @@
 ; x16.inc by SlithyMatt - slightly modified for multi-revision support
 .include "x16.inc"
 .include "zsm.inc"
+.include "macros.inc"
 
 
 IMPORT_TAGGED "nextdata"
@@ -92,7 +93,7 @@ music_player := (* + 1)
 			jsr step_byte	; <-- startmusic will modify this to point at the
 							;     fastest steps-per-frame shell for stepmusic
 
-			; restore VERA data port state and ctrl register
+			; restore VERA data port state, ctrl register, and active RAM bank
 V1 := (*+1)
 			lda #$FF	; vera backups stored here as self-mod code
 			sta VERA_addr_bank
@@ -388,21 +389,22 @@ add_step:
 
 .segment "CODE"
 .proc stopmusic: near
+			;disable ZSM player
 			stz	delay
-			; TODO: silence the voices used by the music
-			ldx #0
-			lda #$20
+			;silence the voices used by the YM2151
+			ldx #0			; .X = voice index 0..7
+			lda #$20		; .A = LR|FB|CON register for voice ($20..$27)
 @YMloop:	ror zsm_chanmask
 			bcc @nextYM
 			YM_BUSY_WAIT
 			ldy #08
-			sty YM_reg
+			sty YM_reg		
 			nop
-			stx	YM_data
+			stx	YM_data		; send KeyUP for voice
 			YM_BUSY_WAIT
-			sta YM_reg
+			sta YM_reg		; select LR|FB|CON register for voice
 			nop
-			stz YM_data
+			stz YM_data		; set to 0 to disable L and R output
 @nextYM:	inx
 			inc
 			cpx	#8

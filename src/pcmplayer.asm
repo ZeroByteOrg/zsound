@@ -1,26 +1,10 @@
 .include "x16.inc"
+.include "macros.inc"
 
-; attempt 3: This one aims to implement a "barely above empty" FIFO strat.
-; The blit routine should copy exactly enough bytes to "tread water" just
-; a few bytes above what's necessary to avoid underflow. The playback will
-; specify a 16.8 value of "bytes per frame" so that fractional bytes will
-; not lead to the buffer slowly draining or overflowing. .8 may not be
-; sufficient accuracy, but I should be able to watch the Box16 FIFO viewer
-; to ascertain whether this is a tenable solution.
-
-; general algorithm:
-; start_digi sets the total bytes, data pointer, and bytes per frame.
-; play_pcm does total_bytes -= bytes-per-frame. if <= 0, then set active=no
-; and call play_pcm one last time using total_bytes instead of bytes-per-frame.
-; load_fifo just copies X bytes into FIFO, assuming there is sufficient room
-; for the full transfer. (uses one byte of ZP for the hi-byte of the transfer count)
-; pcm_ptr:bank stays in ZP for the duration of the playback.
-;
-; start_digi should use a LUT to get the bytes-per-frame value.
-;
-; play_pcm should have a "done" callback.
-
-
+EXPORT_TAGGED "init_pcm"
+EXPORT_TAGGED "start_digi"
+EXPORT_TAGGED "play_pcm"
+EXPORT_TAGGED "stop_pcm"
 
 ; bare minimum info needed in a data file: VERA_CTRL, RATE, length
 ; digi parameter table also needs to store the location of the data
@@ -43,105 +27,8 @@ DIGITAB_LAST		= DIGITAB::rate
 .endstruct
 
 
-PCM_RATE_8000	= (8000/(25000000 >> 16)+1)
-PCM_RATE_12207	= 32
-PCM_RATE_22000  = (22000/(25000000 >> 16)+1)
-
-
-.segment "RODATA"
-pcmtab_lo:	.byte	<digi_coin, <digi_start
-pcmtab_hi:	.byte	>digi_coin, >digi_start
-
-digi_coin:
-	.addr	$a000
-	.byte	1
-	.word	2653
-	.byte	0		; high byte of 24-bit size
-	.byte	$0f
-	.byte	PCM_RATE_12207
-digi_start:
-.if 0
-	.addr	$a000 + 2653
-	.byte	1
-	.word	51620
-	.byte	0
-	.byte	$0f
-	.byte	PCM_RATE_12207
-.else ; shoryuken!!
-	.addr	$a000
-	.byte	1
-	.byte	<(135628)
-	.byte	>(135628)
-	.byte	^(135628)
-	.byte	$3f		; stereo 16bit
-	.byte	PCM_RATE_22000
-.endif
-
-
-;---------------------------------------------------------------
-; test shell
-;---------------------------------------------------------------
-
-;.segment "ONCE"
-.segment "RODATA"
-filename:	.byte "raw3"
-filename_len = (*-filename)
-
-.segment "STARTUP"
-
-	DIGI_BANK = 1
-	LOADTO = $a000
-	
-	; set BANKRAM to the first bank where song should load
-	lda loaded
-	bne skipload
-	lda	#DIGI_BANK
-	sta	RAM_BANK
-	; prepare for call to SETNAM Kernal routine
-	lda #filename_len
-	ldx #<filename
-	ldy #>filename
-	jsr SETNAM
-	; prepare for call to SETLFS Kernal routine
-	lda #0	; logical file id 0
-	ldx	#8	; device 8
-	ldy #0	; 0 = no command
-	jsr	SETLFS
-	; load song to LOADTO
-	lda	#0		; 0=load, 1=verify, 2|3 = VLOAD to VRAM bank0/bank1
-	ldx	#<LOADTO
-	ldy #>LOADTO
-	jsr LOAD
-	
-	jsr	init
-	stz loaded
-skipload:
-	jmp startup_tune
-loaded:	.byte $00
-	
-coin_sound:
-	ldy #0
-	lda pcmtab_lo,y
-	tax
-	lda pcmtab_hi,y
-	tay
-	lda #1
-	jmp start_digi
-
-startup_tune:
-	ldy #1
-	lda pcmtab_lo,y
-	tax
-	lda pcmtab_hi,y
-	tay
-	lda #1
-	jmp start_digi
-
-
-;---------------------------------------------------------------
-; begin zsound PCM player module candidate code
-;---------------------------------------------------------------
-
+; TODO: these ZP addresses aren't permanent storage. Convert to using
+; other temporary space in ZP and not hogging bytes just for this player.
 .segment "ZEROPAGE"
 pcm_pages:		.res 1	; Hi byte of transfer size. (.X holds low byte)
 zp_tmp:			.res 2
@@ -153,36 +40,16 @@ active_digi		:= digi + PCMSTATE::state
 frac_bytes		:= digi + PCMSTATE::fracbytes
 
 
-.segment "CODE"
-irqhandler:
-	lda active_digi
-	beq :+
-	jsr play_pcm
-:	jmp $ffff
-	KERNAL_IRQ := (*-2)
-
 ;---------------------------------------------------------------
 .segment "CODE"
-.proc init: near
-	jsr stop_pcm
-	lda #<irqhandler
-	cmp IRQVec
-	bne install_irq
-	lda #>irqhandler
-	cmp IRQVec+1
-	beq	done
-install_irq:
-	sei
-	lda IRQVec
-	sta KERNAL_IRQ
-	lda IRQVec+1
-	sta KERNAL_IRQ+1
-	lda #<irqhandler
-	sta IRQVec
-	lda #>irqhandler
-	sta IRQVec+1
-	cli
-done:
+.proc init_pcm: near
+	jmp stop_pcm
+	; TODO: at some point I plan to have hooks in ZSM player
+	; for using PCM, and this routine should setup the hooks
+	; appropriately, as I'm thinking "jump table" to be the
+	; way to do that without directly referencing symbols in this
+	; module, forcing it to be assembled in whether or not it's
+	; desired.
 	rts
 .endproc
 
@@ -409,6 +276,11 @@ copy_byte:
 
 ; LUT for bytes-per-frame at all possible play rates 1..128
 ; (loader does dex once before using as index, since 0 = not playing)
+;
+; Consider moving this into Bank RAM.... but zsound doesn't have
+; the "workbank" implemented at this time, so here it stays for now. :)
+;
+; hmmm, that would have to be generated at run-time....
 
 .segment "RODATA"
 pcmrate_fr: ; fraction per frame
@@ -443,3 +315,8 @@ pcmrate_hi:
 	.byte $02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02
 	.byte $02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02
 	.byte $03,$03,$03,$03,$03,$03,$03,$03
+
+canary:
+	.byte	"pcm player included"	; looking for this in the PRG for
+									; simpleplayer when I re-build it
+									; with this module in the library
