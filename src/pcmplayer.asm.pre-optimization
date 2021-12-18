@@ -206,11 +206,9 @@ last_frame:
 ; assumes pcm_ptr:pcm_bank point at the current byte of the sample stream
 ; and that the current bank is not necessarily the one with the data.
 ; assumes FIFO overflow is impossible, as this implementation attempts to
-; keep just 1 frame's worth of samples in the FIFO, max. Assumes 
+; keep just 1 frame's worth of samples in the FIFO, max.
 ;
-; Arguments:
 ; .X = low byte of transfer amount
-; ZP var pcm_pages = hi byte of transfer amount
 ;---------------------------------------------------------------
 .segment "CODE"
 .proc load_fifo: near
@@ -218,46 +216,27 @@ last_frame:
 	pcm_ptr  = digi + PCMSTATE::digi + DIGITAB::addr
 	pcm_bank = digi + PCMSTATE::digi + DIGITAB::bank
 
-	; self-mod the page of the LDA below to the current page of pcm_ptr
-	ldy pcm_ptr+1
+	ldy pcm_ptr+1		; (formerly) ZP
 	sty data_page
-	ldy pcm_ptr			; .Y = low byte of pcm_ptr
+	ldy pcm_ptr			; (formerly) ZP
 	; swap in the current RAM bank of the sample stream
 	lda RAM_BANK
 	sta BANK_SAVE
 	lda pcm_bank		; (formerly) ZP
 	sta RAM_BANK
-	jmp check_done
+	jmp copy_byte
 
-page_wrap:
-	; advance pointer to the next page. Do bank wrap if necessary
-	lda data_page
-	inc
-	sta data_page
-	cmp #$c0
-	bne check_done
+loop_bankwrap:
 	lda #$a0
 	inc RAM_BANK
 	inc pcm_bank		; (formerly) ZP
+loop:
 	sta data_page
-	bra copy_byte
-
-loop2:
-	dec
-	sta pcm_pages		; ZP
-loop1:
-	dex
-copy_byte:
-	lda $FF00,y
-	data_page = (*-1)
-	sta VERA_audio_data
-	iny
-	beq page_wrap
 check_done:
 	cpx #0
-	bne loop1
+	bne dec1
 	lda pcm_pages		; ZP
-	bne loop2
+	bne dec2
 finished:
 	;update the data pointer. (does this even need to be ZP anymore?)
 	sty pcm_ptr			; (formerly) ZP
@@ -267,6 +246,23 @@ finished:
 	BANK_SAVE = (*-1)
 	sta RAM_BANK
 	rts
+dec2:
+	dec
+	sta pcm_pages		; ZP
+dec1:
+	dex
+copy_byte:
+	lda $FF00,y
+	data_page = (*-1)
+	sta VERA_audio_data
+	iny
+	bne check_done
+	; advance pointer to the next page. Do bank wrap if necessary
+	lda data_page
+	inc
+	cmp #$c0
+	bne loop
+	bra loop_bankwrap
 .endproc
 
 
