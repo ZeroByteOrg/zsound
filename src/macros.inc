@@ -41,5 +41,34 @@
 	.ident(.sprintf("%s",symbol))	:=	.ident(.sprintf("%s%d",symbol,X16_VERSION))
 .endmacro
 
+.macro HIPTR_add_word _src, _dst
+	; expects .XY as the word to add
+	; TODO: assembler directives to check that _src and _dst don't overlap
+	lda _src+2
+	sta _dst+2
+	txa
+	clc
+	adc _src
+	sta _dst
+	lda #0
+	adc #0
+	sta _dst+1	; temporarily store carry in _dst page
+	tya
+	; .Y %= $20 and _dst bank += .Y / $20
+:	cmp #$20
+	bcc :+
+	sbc #$20	; carry guaranteed to be set by CMP if we reach this instruction
+	inc _dst+2
+	bra :-
+	; add (.Y % $20) to _dst page including carry from above
+:	adc _dst+1	; add carry from above
+	adc _src+1
+:	cmp #$c0	; final bank-wrap check
+	bcc :+
+	inc _dst+2
+	sbc #$20
+:	sta _dst+1
+.endmacro
+
 
 .endif

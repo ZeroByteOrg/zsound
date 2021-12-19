@@ -32,6 +32,7 @@ DIGITAB_LAST		= DIGITAB::rate
 .segment "ZEROPAGE"
 pcm_pages:		.res 1	; Hi byte of transfer size. (.X holds low byte)
 zp_tmp:			.res 2
+zp_tmp2:		.res 2
 
 .segment "BSS"
 digi:			.tag PCMSTATE
@@ -187,12 +188,14 @@ noop:
 	tax
 	lda bytesperframe+1
 	adc #0
-	sta pcm_pages	; none of the frame rates in the table will overflow this.
+;	sta pcm_pages	; none of the frame rates in the table will overflow this.
+	tay
 	jmp load_fifo
 last_frame:
 	ldx totalbytes
-	lda totalbytes+1
-	sta pcm_pages
+;	lda totalbytes+1
+	ldy totalbytes+1
+;	sta pcm_pages
 	stz totalbytes
 	stz totalbytes+1
 	stz frac_bytes
@@ -213,7 +216,7 @@ last_frame:
 ; ZP var pcm_pages = hi byte of transfer amount
 ;---------------------------------------------------------------
 .segment "CODE"
-.proc load_fifo: near
+.proc load_fifo1: near
 
 	pcm_ptr  = digi + PCMSTATE::digi + DIGITAB::addr
 	pcm_bank = digi + PCMSTATE::digi + DIGITAB::bank
@@ -259,7 +262,7 @@ check_done:
 	lda pcm_pages		; ZP
 	bne loop2
 finished:
-	;update the data pointer. (does this even need to be ZP anymore?)
+	;update the data pointer.
 	sty pcm_ptr			; (formerly) ZP
 	ldy data_page		; self-mod
 	sty pcm_ptr+1		; (formerly) ZP
@@ -269,7 +272,108 @@ finished:
 	rts
 .endproc
 
+;=====================================================
+; I think it's done. Haven't tested. In order to use,
+; the call from play_pcm is slightly different
+;
+; other note: the dynamic BNE #offset code is fragile right
+; now - if the distance between dynamic_comparator and copy_byte
+; ever changes, then that value will be wrong.
+ 
+.segment "CODE"
+.proc load_fifo: near
 
+	pcm_ptr		= digi + PCMSTATE::digi + DIGITAB::addr
+	pcm_bank	= digi + PCMSTATE::digi + DIGITAB::bank
+	bytes_left	= zp_tmp
+	
+	__CPX		= $e0	; opcode for cpx immediate
+	__BNE		= $d0
+;	branch_amount	.set (.addr(copy_byte) - .addr(dynamic_comparator))
+	
+	; swap in the current RAM bank of the sample stream
+	lda RAM_BANK
+	sta BANK_SAVE
+	lda pcm_bank
+	sta RAM_BANK
+	; self-mod the page of the LDA below to the current page of pcm_ptr
+	lda pcm_ptr+1
+	sta data_page
+	; page-align the pcm_ptr
+	txa			;.A now holds the low-byte of n-bytes to copy
+	ldx pcm_ptr	;.X now points at the page-aligned offset
+	; add the delta to bytes_left
+	clc
+	adc pcm_ptr
+	sta bytes_left
+	bcc :+
+	iny
+	; determine whether we have > $FF bytes to copy. If $100 or more, then
+	; use the full-page dynamic comparator. Else use the last-page comparator.
+:	cpy #0
+	beq last_page	; if 0, then use the last_page comparator.
+	; self-mod the instruction at dynamic_comparator to:
+	; BNE copy_byte
+	; note that if the distance between dynamic_comparator and copy_byte
+	; is changed due to code changes, BE SURE TO FIX THIS VALUE (-9)
+	lda #__BNE
+	sta dynamic_comparator
+	lda #.lobyte(-9)
+	sta dynamic_comparator+1
+
+copy_byte:
+	lda $FF00,x
+	data_page = (*-1)
+	sta VERA_audio_data
+	inx
+dynamic_comparator:
+	bne copy_byte
+	; the above instruction is modified to cpx #(bytes_left) on the last page
+	bne copy_byte	; branch for final page's cpx result
+	cpx #0
+	bne done		; if pcm_ptr.lo != 0, then we were on the final page, so we're now done.
+					; if it IS = 0 then page wrap and check whether ending on $XX00 address.
+	; advance pointer before checking if done
+	lda data_page
+	inc
+	cmp #$c0
+	beq do_bankwrap
+no_bankwrap:
+	sta data_page
+check_done:
+	cpy #0
+	beq done
+	dey
+	bne copy_byte
+last_page:
+	lda bytes_left
+	beq done
+	; self-mod the instruction at dynamic_comparator:
+	; CPX #(bytes_left)
+	sta dynamic_comparator+1
+	lda #__CPX
+	sta dynamic_comparator
+	bra copy_byte
+
+done:
+	;update the data pointer from .X and data_page
+	;pcm_bank was updated on the fly in do_bankwrap
+	stx pcm_ptr
+	lda data_page
+	sta pcm_ptr+1
+	; restore RAM_BANK to what it was when load_fifo was called
+	lda #$FF
+	BANK_SAVE = (*-1)
+	sta RAM_BANK
+	rts
+
+do_bankwrap:
+	lda #$a0
+	inc RAM_BANK
+	inc pcm_bank
+	bra no_bankwrap
+
+.endproc
 
 ;---------------------------------------------------------------
 .segment "CODE"
