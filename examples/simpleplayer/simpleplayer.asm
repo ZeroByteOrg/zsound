@@ -25,8 +25,9 @@
 ZSM_address = $A000		; memory address to load song (should be in HIRAM bank window)
 ZSM_bank 	= 2			; defines starting bank in HIRAM
 
-PCM_address = $B46A
+PCM_address = $B46A+3
 PCM_bank	= 2
+USEDIGI		= 1
 
 
 BAR_VISIBLE_MODE	= $31
@@ -53,11 +54,19 @@ RASTER_LINE_TOP		= 0	; first visible row of pixels?
 .endif
 filename_len = (* - filename)
 
-diginame:	.byte "shoryuken.pcm"
+diginame:
+.if USEDIGI=0
+	.byte "stereo22k16.pcm"
+	shoryuken = stereo22k16
+.endif
+.if USEDIGI=1
+	.byte "mono8k8.pcm"
+	shoryuken = mono8k8
+.endif
 diginame_len = (* - diginame)
 
 ; PCM parameter table to pass to start_digi
-shoryuken:
+stereo22k16:
 	.word	PCM_address
 	.byte 	PCM_bank
 	.byte	<(135628)	; size of digi (in bytes)
@@ -65,6 +74,14 @@ shoryuken:
 	.byte	^(135628)
 	.byte	$3f			; stereo 16bit
 	.byte	(22000/(25000000>>16))+1	; 22khz sample rate
+mono8k8:
+	.word	PCM_address
+	.byte 	PCM_bank
+	.byte	<(12330)	; size of digi (in bytes)
+	.byte	>(12330)
+	.byte	^(12330)
+	.byte	$0f			; mono 8bit
+	.byte	(8000/(25000000>>16))+1	; 8khz sample rate
 
 ; -----------------------------------------------------------------
 
