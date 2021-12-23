@@ -309,7 +309,7 @@ start:
 			
 			jsr	swaplayer		; get the screen elements ready for the
 			jsr	drawmeter		; perf meter bar
-			
+
 			cli
 
 			; Call startmusic:
@@ -319,6 +319,14 @@ start:
 			ldx #<ZSM_address
 			ldy #>ZSM_address
 			jsr startmusic
+
+			;Optional: specify a limited number of loops
+			;da #1		; number of loops (0 = infinite)
+			;sr loopmusic
+
+			ldx #<helloworld
+			ldy #>helloworld
+			jsr setcallback
 
 			lda #1
 			sta	semaphore		; intilize the IRQ semaphore
