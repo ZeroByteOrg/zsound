@@ -25,9 +25,8 @@
 ZSM_address = $A000		; memory address to load song (should be in HIRAM bank window)
 ZSM_bank 	= 2			; defines starting bank in HIRAM
 
-PCM_address = $B46A+3
-PCM_bank	= 2
-USEDIGI		= 1
+;PCM_address = $B46A
+;PCM_bank	= 2
 
 
 BAR_VISIBLE_MODE	= $31
@@ -54,41 +53,30 @@ RASTER_LINE_TOP		= 0	; first visible row of pixels?
 .endif
 filename_len = (* - filename)
 
-diginame:
-.if USEDIGI=0
-	.byte "stereo22k16.pcm"
-	shoryuken = stereo22k16
-.endif
-.if USEDIGI=1
-	.byte "mono8k8.pcm"
-	shoryuken = mono8k8
-.endif
+diginame:	.byte "shoryuken.pcm"
 diginame_len = (* - diginame)
 
+.segment "DATA"
 ; PCM parameter table to pass to start_digi
-stereo22k16:
-	.word	PCM_address
-	.byte 	PCM_bank
+shoryuken:
+	.word	0			; replace with PCM_address at runtime
+	.byte 	0			; replace with PCM_bank at runtime
 	.byte	<(135628)	; size of digi (in bytes)
 	.byte	>(135628)
 	.byte	^(135628)
 	.byte	$3f			; stereo 16bit
 	.byte	(22000/(25000000>>16))+1	; 22khz sample rate
-mono8k8:
-	.word	PCM_address
-	.byte 	PCM_bank
-	.byte	<(12330)	; size of digi (in bytes)
-	.byte	>(12330)
-	.byte	^(12330)
-	.byte	$0f			; mono 8bit
-	.byte	(8000/(25000000>>16))+1	; 8khz sample rate
+
+PCM_address	:= shoryuken
+PCM_bank	:= shoryuken + 2
 
 ; -----------------------------------------------------------------
 
 .segment "BSS"
 
-kernal_irq:	.res	2	; storage for the previous IRQ RAM vector
-semaphore:	.res	1	; byte that signals between the IRQ and main loop
+kernal_irq:		.res	2	; storage for the previous IRQ RAM vector
+semaphore:		.res	1	; byte that signals between the IRQ and main loop
+
 
 ; -----------------------------------------------------------------
 
@@ -269,10 +257,16 @@ start:
 			ldy #$a0
 			jsr LOAD
 
+			; store the memory address following the end of the ZSM data
+			stx	PCM_address
+			sty PCM_address+1
+			ldx RAM_BANK
+			stx PCM_bank
+
 			;  ==== load digi file into memory ====
 
 			; set BANKRAM to the first bank where song should load
-			lda	#PCM_bank
+			lda	PCM_bank
 			sta	RAM_BANK
 			; prepare for call to SETNAM Kernal routine
 			lda #diginame_len
@@ -286,8 +280,8 @@ start:
 			jsr	SETLFS
 			; load digi sound data
 			lda	#0		; 0=load, 1=verify, 2|3 = VLOAD to VRAM bank0/bank1
-			ldx	#<PCM_address
-			ldy #>PCM_address
+			ldx	PCM_address
+			ldy PCM_address+1
 			jsr LOAD
 
 			;  ==== Install IRQ handler to process music once per frame ====

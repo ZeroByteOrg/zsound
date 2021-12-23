@@ -96,7 +96,7 @@ loop:
 	dec active_digi
 	stz frac_bytes
 	jsr play_pcm	; prime the FIFO with at least 1 frame's worth of data.
-	jsr play_pcm	; prime the FIFO with at least 1 frame's worth of data.
+;	jsr play_pcm	; prime the FIFO with at least 1 frame's worth of data.
 	
 	; enable VERA PCM playback
 	ldx digi + PCMSTATE::digi + DIGITAB::rate

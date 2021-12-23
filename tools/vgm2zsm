@@ -36,6 +36,10 @@
  * 		so if you think they aren't needed on a particular tune, -f disables these
  * 		and the resulting VGM will only have semitone-accurate note reproduction.
  * 
+ * -t<rate>: tick rate (Hz)
+ * 		ZSM defaults to 60Hz per tick timing. This option specifies a different
+ * 		tick interval in Hz. The minimum value is 60, the maximum value is 65535
+ * 
  * I ultimately intend to rewrite this tool using Python, and when doing so, the
  * new script should be much more extensible than this one was. Oh well. Too bad
  * I'm not a Python guy though....
@@ -43,7 +47,7 @@
 */
 
 $rest_index = null;
-$opts = getopt('4bft::', [], $rest_index);
+$opts = getopt('d4bft::', [], $rest_index);
 $filenames = array_slice($argv, $rest_index);
 
 if (isset($opts['t']) && ($opts['t'] !== false)) {
@@ -103,6 +107,17 @@ $PSGvolume = array( 0,1,2,3,4,8,12,16,24,28,34,40,45,51,58,63);
 function DEBUG($str,...$vars) {
 	global $opts;
 	if (isset($opts['d'])) print vsprintf($str,$vars);
+	
+}
+
+function read_uint32($i) {
+	global $vgm;
+	$v = 0;
+	$v += $vgm[$i++];
+	$v += $vgm[$i++]<<8;
+	$v += $vgm[$i++]<<16;
+	$v += $vgm[$i++]<<24;
+	return($v);
 }
 
 function freq($oct,$code) {
@@ -379,9 +394,15 @@ function wait($t)
 	global $ticks;
 	global $songdata;
 	global $ymbuffer;
+	global $pcmstreams;
 	
 	$ticks += $t;
 	if (intdiv($ticks,TICKSPERFRAME) > 0) {flushymbuffer();}
+	
+	foreach ($pcmstreams as $stream)
+	{
+		$stream($t);
+	}
 }
 
 function out_asm()
@@ -417,6 +438,25 @@ function out_zsm($ofile)
 	fwrite($of,pack('C*',...$songdata));
 	fclose($of);
 	
+}
+
+function update_ymDAC($numticks)
+{
+	global $ymDAC;
+
+	if ($ymDAC['stream'] === false) return;
+	foreach (range(1,$numticks) as $foo)
+		fwrite($ymDAC['stream'], pack('C',$ymDAC['value']));
+}
+
+function log_pcm($numticks)
+{
+	global $pcmstreams;
+	
+	foreach ($pcmstreams as $stream)
+	{
+		$stream($numticks);
+	}
 }
 
 function translate_sn($d)
@@ -664,6 +704,7 @@ function translate_opn($a, $d, $base, $ofst)
 		case 0x2d:  // set pre-scaler . (no explanation in dox)
 		case 0x2e:	// set clock divider = 3 or 6 (how??)
 		case 0x2f:	// set clock divider = 2
+		// NOTE: Check the YM2106 docs to see if it explains the clock divider
 			return; // ignore
 			break;
 		case 0x24: // TimerA Hi
@@ -808,6 +849,26 @@ function translate_opn($a, $d, $base, $ofst)
 	generate(1,$a,$d); // send the translated reg/val as if it were for YM.
 }
 
+function getstream($tag, $handler)
+{
+	global $pcmstreams;
+	
+	$filename = OUTFILENAME . $tag . '.pcm';
+	$f = fopen($filename, "w+b");
+	if ($f !== false)
+	{
+		$pcmstreams[$tag] = $handler;
+	}
+	return ($f);
+}
+
+function closestream($tag,$filehandle)
+{
+	global $pcmstreams;
+	fclose($filehandle);
+	unset($pcmstreams[$tag]);
+}
+
 $filesize=filesize(FILENAME);
 if ($f = fopen(FILENAME, "r")) {
 	$binary=fread($f,$filesize);
@@ -828,39 +889,40 @@ if (($vgm[0x09] < 2) && ($vgm[0x08] < 0x50)) {
 	$i = 0x40;
 }
 else {
-	$i = OFFSET;
-	$i += $vgm[OFFSET];
-	$i += $vgm[OFFSET+1] << 8;
-	$i += $vgm[OFFSET+2] << 16;
-	$i += $vgm[OFFSET+3] << 24;
+	$i = OFFSET + read_uint32(OFFSET);
+	//$i = OFFSET;
+	//$i += $vgm[OFFSET];
+	//$i += $vgm[OFFSET+1] << 8;
+	//$i += $vgm[OFFSET+2] << 16;
+	//$i += $vgm[OFFSET+3] << 24;
 }
 
-$opnclock = 0;
-$opnclock += $vgm[0x44];
-$opnclock += $vgm[0x45] << 8;
-$opnclock += $vgm[0x46] << 16;
-$opnclock += $vgm[0x47] << 24;
-$opnclock &= 0xbfffffff; // bit 30 = dual chip flag. Ignore it.
+$opnclock = read_uint32(0x44) & 0xbfffffff;
+//$opnclock += $vgm[0x44];
+//$opnclock += $vgm[0x45] << 8;
+//$opnclock += $vgm[0x46] << 16;
+//$opnclock += $vgm[0x47] << 24;
+//$opnclock &= 0xbfffffff; // bit 30 = dual chip flag. Ignore it.
 
-$opmclock = 0;
-$opmclock += $vgm[0x30];
-$opmclock += $vgm[0x31] << 8;
-$opmclock += $vgm[0x32] << 16;
-$opmclock += $vgm[0x33] << 24;
-$opmclock &= 0xbfffffff; // bit 30 = dual chip flag. Ignore it.
+$opmclock = read_uint32(0x30) & 0xbfffffff; // bit 30 = dual chip flag. Ignore it.
+//$opmclock += $vgm[0x30];
+//$opmclock += $vgm[0x31] << 8;
+//$opmclock += $vgm[0x32] << 16;
+//$opmclock += $vgm[0x33] << 24;
+//$opmclock &= 0xbfffffff; // bit 30 = dual chip flag. Ignore it.
 
-$opn2clock = 0;
-$opn2clock += $vgm[0x2c];
-$opn2clock += $vgm[0x2d] << 8;
-$opn2clock += $vgm[0x2e] << 16;
-$opn2clock += $vgm[0x3f] << 24;
+$opn2clock = read_uint32(0x2c);
+//$opn2clock += $vgm[0x2c];
+//$opn2clock += $vgm[0x2d] << 8;
+//$opn2clock += $vgm[0x2e] << 16;
+//$opn2clock += $vgm[0x3f] << 24;
 
-$ayclock = 0;
-$ayclock += $vgm[0x74];
-$ayclock += $vgm[0x75] << 8;
-$ayclock += $vgm[0x76] << 16;
-$ayclock += $vgm[0x77] << 24;
-$ayclock &= 0xbfffffff; // bit 30 = dual chip flag. Ignore it.
+$ayclock = read_uint32(0x74) & 0xbfffffff;
+//$ayclock += $vgm[0x74];
+//$ayclock += $vgm[0x75] << 8;
+//$ayclock += $vgm[0x76] << 16;
+//$ayclock += $vgm[0x77] << 24;
+//$ayclock &= 0xbfffffff; // bit 30 = dual chip flag. Ignore it.
 
 DEBUG("OPN clock rate = %d\n",$opnclock);
 //$opnclock *= 2; // test
@@ -875,11 +937,11 @@ else { $ayclock = $opnclock / 3; }
 // test for warp:
 //$ayclock = $ayclock / 2;
 
-$loopstart = 0x1c;
-$loopstart += $vgm[0x1c];
-$loopstart += $vgm[0x1d]<<8;
-$loopstart += $vgm[0x1e]<<16;
-$loopstart += $vgm[0x1f]<<24;
+$loopstart = 0x1c + read_uint32(0x1c);
+//$loopstart += $vgm[0x1c];
+//$loopstart += $vgm[0x1d]<<8;
+//$loopstart += $vgm[0x1e]<<16;
+//$loopstart += $vgm[0x1f]<<24;
 
 
 define ("EOF",count($vgm));
@@ -924,6 +986,15 @@ $psgshadow = array(
 $snlatch = array( 0,0,0,0 ); // tone LSB for A, B, C and the current reg latch
 $sninitialized = false;
 $cityconpatchfix = false;
+
+$pcmstreams=array();
+$ymDAC = array(
+	'value'		=> 0,
+	'stream'	=> false,
+	'bank'		=> 0,		// VGM offset of the DAC data block
+	'size'		=> 0,
+	'ptr'		=> 0		// set this to the VGM offest (absolute) of the current sample
+);
 
 while ($i < EOF) {
   $cmd = $vgm[$i];
@@ -1002,8 +1073,24 @@ while ($i < EOF) {
 		generate(1,$cha + 0x38,$d);
 		$ignore = true; // we've already written everything from here. No need to call translate_opn.
 		break;
-	case 0x2a: // DAC data write
+	case 0x2a: // DAC data write ; also done by VGM command 0x8n which uses the DAC data block. (assuming there's only one?)
+		$ymDAC['value'] = $d;
+		$ignore = true;	// don't send to translate_opn() 
+		break;
 	case 0x2b: // DAC enable
+		$want_dac = ($d & 0x80) == 0x80;
+		if (( $ymDAC['stream'] === false ) && $want_dac)
+		{
+			// open a new output file for streaming the DAC data into.
+			$ymDAC['tag'] = vsprintf("dac%08x",$i-3);
+			$ymDAC['stream'] = getstream($ymDAC['tag'], "update_ymDAC");
+		}
+		if (($ymDAC['stream'] !== false ) && (($d & 0x80) == 0))
+		{
+			closestream($ymDAC['tag'],$ymDAC['stream']);
+			$ymDAC['stream'] = false;
+			unset($ymDAC['tag']);
+		}
 		$ignore = true;
 		break;
 	case 0xb0:
@@ -1047,12 +1134,25 @@ while ($i < EOF) {
   case 0x66:
 	$i=EOF;
 	break;
-  case 0x67:
-	$t = $i-1; // store the address of the command before skipping data
-	$i+=2;
-	$datasize=$vgm[$i] | $vgm[$i+1]<<8 | $vgm[$i+2]<<16 | $vgm[$i+3]<<24;
-	$i += $datasize + 4;
-	DEBUG("[%6x] Data block (%4x)\n",$t,$datasize);
+  case 0x67:	// data block. I guess this might just warrant a function call soon....
+	$blocktype = $vgm[$i+1];
+	$datasize = read_uint32($i+2);
+	$offset = $i+6;
+	DEBUG("[%06x] Data block (Type: 0x%02x Size: 0x%x)\n",$i-1,$datasize);
+	// $i += $datasize + 4; // was relative to start of the Block-Size bytes
+	$i = $offset + $datasize; // skip past the data block for now.
+	if ($blocktype == 0)
+	{
+		// YM2612 DAC data (uncompressed. yippie)
+		// since this script is a pile of hacks on top of hacks,
+		// I'm just going to support uncompressed inline for now and
+		// think about compression support after getting things working
+		// with Sonic the Hedgehog 1 Green Hill Zone
+		$ymDAC['bank'] = $offset;
+		$ymDAC['size'] = $datasize;
+		$ymDAC['ptr']  = $offset; // seems like a decent default to me....
+	}
+	
 	break;
   case 0x4F:	// Sega GameGear PCM stereo write (one-byte operand)
 	$i+=1; 		// (skip)
@@ -1071,7 +1171,7 @@ while ($i < EOF) {
 	//printf("[%6x] {%5d} Ignore command %2x\n",$i-1,$ticks,$cmd);
   	$i += 2;
   	break;
-  // ignore Sega Megadrive DAC commands
+  // Sega Megadrive (YM2612) DAC writes
   case 0x80:
   case 0x81:
   case 0x82:
@@ -1088,13 +1188,24 @@ while ($i < EOF) {
   case 0x8D:
   case 0x8E:
   case 0x8F:
+	if ( ($ymDAC['ptr'] > $ymDAC['bank'] + $ymDAC['size'])
+	    || ($ymDAC['ptr'] < $ymDAC['bank']) )
+	{
+		print "WARNING: YM2151 DAC write from outside of PCM data bank area.\n";
+		printf("         VGM offset = %06x\n",$i-1);
+	}
+	$ymDAC['value'] = $vgm[ $ymDAC['ptr']++ ]; // R.I.P. headphones if it's invalid....
 	wait($cmd & 0x0f);
 	break;
   case 0xe0: // Set Sega DAC data block pointer
-	$i += 4; // (skip)
+	$ymDAC['ptr'] = $ymDAC['bank'] + read_uint32($i);
+	$i += 4;
+	// ================== THIS IS A GOOD STARTING POINT AS A "SAMPLE TRIGGER" indication
+	// todo: once the program can write a PCM recording of the entire playback, start here
+	// on the process of whittling it down to a set of usable samples in ZSM
 	break;
   // skip commands with 3-byte operands
-  case 0xc0: // Ignore Sega PCM commands.
+  case 0xc0: // Ignore Sega PCM commands. (SEGA Arcade PCM, that is)
   case 0xc1:
   case 0xc2:
   case 0xc3:
@@ -1113,7 +1224,7 @@ while ($i < EOF) {
 	//printf("[%6x] {%5d} Ignore command %2x\n",$i-1,$ticks,$cmd);
 	$i += 3;
 	break;
-  case 0x70:
+  case 0x70: // 0x7n = wait n+1 ticks
   case 0x71:
   case 0x72:
   case 0x73:
@@ -1139,10 +1250,10 @@ while ($i < EOF) {
 	break;
   default:
 	//array_push($errors, sprintf ("[%6x] : Unknown command (%2x)\n",$i-1,$cmd));
-printf ("[%6x] : Unknown command (%2x)\n",$i-1,$cmd);
+printf ("[%06x] : Unknown command (%2x)\n",$i-1,$cmd);
 	break;
   }; // end of switch()
-  if ((sizeof($ymbuffer)%2) != 0) { print "WTF???"; exit; }
+  if ((sizeof($ymbuffer)%2) != 0) { print "WTF???"; exit; } //future-me: must've had a bug at some point....
   if ($i == $loopstart) {
 	  init_shadow(); // prevent garbled sound at loop points due to instruction cache.
 	  flushymbuffer();

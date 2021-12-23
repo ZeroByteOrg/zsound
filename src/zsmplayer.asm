@@ -5,6 +5,7 @@
 
 
 IMPORT_TAGGED "nextdata"
+IMPORT_TAGGED "helloworld"
 
 EXPORT_TAGGED "init_player"
 EXPORT_TAGGED "stepmusic"
@@ -32,6 +33,14 @@ tmp:			.tag	SONGPTR
 zsm_chanmask:	.tag	CHANMASK
 zsm_fracsteps:	.res	3	; 16.8 fixed point: n steps per 60hz frame
 zsm_steps	:= zsm_fracsteps + 1
+
+; Vector table for various callback pointers
+ZSM_VECTOR_TABLE = *
+ZSM_VECTOR_pcmcall:		.res 2 
+ZSM_VECTOR_user:		.res 2
+ZSM_VECTOR_done:		.res 2
+ZSM_VECTOR_COUNT	= (*-ZSM_VECTOR_TABLE)/2
+
 
 ;macro to choose the fastest available ticks/step routine.
 .macro CHOOSE_PLAYER
@@ -61,7 +70,14 @@ zsm_steps	:= zsm_fracsteps + 1
 	sta music_player+1
 .endmacro
 
+
+
 ;--------------------------------------------------------------------------
+
+.segment "CODE"
+null_handler:
+			rts
+
 
 .segment "CODE"
 playmusic:
@@ -154,6 +170,23 @@ player_table_hi:	.byte >stepmusic, >step_byte, >step_word
 			sta	zsm_steps
 			stz zsm_steps+1
 			stz zsm_steps+2
+			; initialize the ZSM callbacks to null-handler
+			lda #<null_handler
+			sta ZSM_VECTOR_pcmcall
+			sta ZSM_VECTOR_user
+			sta ZSM_VECTOR_done
+			lda #>null_handler
+			sta ZSM_VECTOR_pcmcall+1
+			sta ZSM_VECTOR_user+1
+			sta ZSM_VECTOR_done+1
+			
+			; ========TEST CODE
+			lda #<hello_loop
+			sta ZSM_VECTOR_done
+			lda #>hello_loop
+			sta ZSM_VECTOR_done+1
+			;==================
+			
 			rts
 
 dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
@@ -504,7 +537,7 @@ playPSG:						; 2
 
 YMPCM:							; 3
 			and #$3f			; 2
-			beq PCMcommand		;
+			beq CallHandler
 playYM:							; 2
 			tax					; 2		; X now holds number of reg/val pairs to process
 nextYM:	
@@ -519,17 +552,52 @@ nextYM:
 			lda (data)
 			sta YM_data
 			bra nextYM		; 3
-PCMcommand:
+CallHandler:
 			jsr nextdata
-			; PCM commands are 4 bytes. Skip for now.
+			; PCM commands are 3 bytes.
+			lda (data)
+			sta CMD_BYTE	; stash the command byte to free up the accumulator
 			jsr nextdata
+			lda (data)
+			tax
 			jsr nextdata
+			lda (data)
+			tay
 			jsr nextdata
-			jsr nextdata
-			rts				; no PCM commands defined yet...
+			; pre-load the stack pointer with return address = nextnote, and jmp to callback
+			lda #>(nextnote-1)
+			pha
+			lda #<(nextnote-1)
+			pha
+			lda #$FF
+			CMD_BYTE = (*-1)
+			bne user_callback
+			jmp (ZSM_VECTOR_pcmcall)
+user_callback:
+			jmp (ZSM_VECTOR_user)
 
+; This will be getting converted into a callback whenever the end-of-data byte is reached, instead of a simple JMP.
+; The new methodology will allow the user to define the looping/ending behavior at runtime.
 loopsong:
 			; check if loop_ptr bank = $FF
+			lda #>callback_test
+			pha
+			lda #<callback_test
+			pha
+			lda VERA_addr_high
+			sta VH
+			lda VERA_addr_bank
+			sta VB
+			jmp (ZSM_VECTOR_done)
+			
+callback_test = (*-1)
+			lda #$ff
+			VH = (*-1)
+			sta VERA_addr_high
+			lda #$ff
+			VB = (*-1)
+			sta VERA_addr_bank
+			
 			lda loop_pointer+SONGPTR::bank
 			cmp	#$FF
 			bne :+
@@ -543,9 +611,16 @@ loopsong:
 			jmp	nextnote
 .endproc
 
+;============== TEST CODE =========== DELME DELME DELME ===========
+.segment "CODE"
+hello_loop:
+			;rts
+			jmp helloworld
 
-; ---------------------------------------------------------------------------
-; step_16: 
+
+;............
+; step_word :
+; ===========================================================================
 ;
 ; Arguments: (none)
 ; Returns: should be similar to step_music - not implemented yet here.
@@ -570,24 +645,27 @@ loopsong:
 			adc #0
 			sta step+1
 			; call step_music that many times
-next_step:	
+			bne loop
 			lda step
-			bne	call_stepmusic
-			lda step+1
-			beq done
+			bne loop
+			rts	; somehow, this was called with a steps=0 in memory...
+loop_hi:
 			dec
 			sta step+1
-call_stepmusic:
-			dec step
+loop:
 			jsr stepmusic
 			; TODO: handle nonzero CC flag returns from stepmusic
-			bra next_step
+			dec step
+			bne loop
+			lda step+1
+			bne loop_hi
 done:		rts
 
 .endproc
 
-; ---------------------------------------------------------------------------
-; step_8: 
+;............
+; step_byte : 
+; ===========================================================================
 ;
 ; Arguments: (none)
 ; Returns: should be similar to step_music - not implemented yet here.
