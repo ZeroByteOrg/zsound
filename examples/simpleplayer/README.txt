@@ -5,7 +5,11 @@ play ZSM music on the Commander X16. When run, it loads either BGM38.ZSM or
 BGM39.ZSM depending on which emulator revision it was built for.
 
 Building:
+You may use the included build.sh script - specify the emulator REV on the command line.
+E.g.:
+./build.sh 39
 
+Manual build command:
 cl65 -t cx16 --asm-define REV={38|39} -L ../../lib --asm-include-dir ../../inc -o SIMPLEPLAYER.PRG simpleplayer.asm zsound.lib
 
 Running:

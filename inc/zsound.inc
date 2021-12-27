@@ -2,12 +2,39 @@
 	REV = 39
 .endif
 
-	; import symbols as symbol + REV  (e.g. helloworld38)
-	; alias them with the non-rev symbol (i.e. helloworld := helloworld38)
+;Macros to import the zsound version-tagged symbols as non-tagged symbols.
+;Zsound contains symbols for r38 and r39 compatible builds, and exports them
+;as symbol38 or symbol39. The macros "undo" that tag.
+; eg: playmusic39: --> playmusic:
 
+.macro IMPORT_TAGGED symbol
+	.import	.ident(.sprintf("%s%d",symbol,REV))
+	.ident(.sprintf("%s",symbol))	:=	.ident(.sprintf("%s%d",symbol,REV))
+.endmacro
 
-	.import	.ident(.sprintf("%s%d","helloworld",REV))
-	helloworld	:=	.ident(.sprintf("%s%d","helloworld",REV))
+.macro IMPORTZP_TAGGED symbol
+	.importzp .ident(.sprintf("%s%d",symbol,REV))
+	.ident(.sprintf("%s",symbol))	:=	.ident(.sprintf("%s%d",symbol,REV))
+.endmacro
+
+IMPORT_TAGGED "init_player"
+IMPORT_TAGGED "stepmusic"
+IMPORT_TAGGED "playmusic"
+IMPORT_TAGGED "playmusic_IRQ"
+IMPORT_TAGGED "startmusic"
+IMPORT_TAGGED "stopmusic"
+IMPORT_TAGGED "setmusicspeed"
+IMPORT_TAGGED "force_loop"
+IMPORT_TAGGED "set_loop"
+IMPORT_TAGGED "disable_loop"
+IMPORT_TAGGED "setcallback"
+
+; to-do: move patchym into a separate .inc file for API
+IMPORT_TAGGED "patchym"
+
+; helloworld was here as a simple way to test the multi-source-file
+; project behavior. Uncomment to include it, but it really isn't needed...
+; IMPORT_TAGGED "helloworld"
 
 ;..............
 ; init_player :
@@ -19,8 +46,10 @@
 ; Initializes the memory locations used by ZSM player to a stopped playback
 ; state, with the data pointer pointing at a dummy "end-of-data" command frame.
 ;
-	.import	.ident(.sprintf("%s%d","init_player",REV))
-	init_player	:=	.ident(.sprintf("%s%d","init_player",REV))
+;	.import	.ident(.sprintf("%s%d","init_player",REV))
+;	init_player	:=	.ident(.sprintf("%s%d","init_player",REV))
+
+
 
 ;............
 ; stepmusic :
@@ -41,23 +70,23 @@
 ; wrapper functions that save and restore VERA before calling this
 ; core routine, or else be sure to save the states of the affected VERA registers
 ;
-	.import	.ident(.sprintf("%s%d","stepmusic",REV))
-	stepmusic	:=	.ident(.sprintf("%s%d","stepmusic",REV))
+;	.import	.ident(.sprintf("%s%d","stepmusic",REV))
+;	stepmusic	:=	.ident(.sprintf("%s%d","stepmusic",REV))
 
 ;............
 ; playmusic :
 ; ===========================================================================
-; Arguments: (none)
-; Returns: (currently broken) should return 0=playing, 1=stopped or loop encountered
+; Arguments: none
+; Returns: none
 ; Affects: See stepmusic
 ; ---------------------------------------------------------------------------
 ;
 ; 60hz frontend for stepmusic.
 ; Call it once per frame to play ZSM music.
 ;
-; Playmusic calls stepmusic however many times
-; is determined from the ZSM tick rate header information. This function does not
-; smooth time - i.e. it calls stepmusic N times in a row. For more accurate timing
+; Playmusic calls stepmusic however many times is determined from the ZSM tick
+; rate header information. This function does not "smooth" time - i.e. it
+; just calls stepmusic N times in a row. For more accurate timing
 ; you should generate your own timing source and call stepmusic directly.
 ;
 ; NOTE: playmusic calls stepmusic, WHICH IS NOT IRQ SAFE! Use playmusic_IRQ instead
@@ -65,26 +94,27 @@
 ;		handler should save and restore the VERA ctrl register and the address
 ;		registers for the data0 data port.
 ;
-	.import	.ident(.sprintf("%s%d","playmusic",REV))
-	playmusic	:=	.ident(.sprintf("%s%d","playmusic",REV))
 
 ;................
 ; playmusic_IRQ :
 ; ===========================================================================
-; IRQ-safe version of playmusic, which restores VERA registers.
+; IRQ-safe version of playmusic, which restores VERA registers and the active
+; HiRAM bank.
+;
 ; It does NOT save or restore the CPU registers. Your IRQ handler should
 ; pull those from the stack prior to RTI as usual if not jumping into the
 ; Kernal's once per frame routine.
+;
+; Alternatively, you can use this interface as a VERA-safe call from outside
+; of IRQ handlers. A,X,and Y are still clobbered by stepmusic.
 ; 
-	.import	.ident(.sprintf("%s%d","playmusic_IRQ",REV))
-	playmusic_IRQ	:=	.ident(.sprintf("%s%d","playmusic_IRQ",REV))
 
 ;.............
 ; startmusic : 
 ; ===========================================================================
 ; Arguments:
 ;	A	: HIRAM bank of tune
-;	X/Y	: Memory address of beginning of ZSM header
+;	XY	: Memory address of beginning of ZSM header
 ; Returns: Carry flag: 0=success, 1=fail
 ; Affects: A,X,Y
 ; ---------------------------------------------------------------------------
@@ -94,10 +124,9 @@
 ; Defaults the looping behavior based on the ZSM being played. If the tune
 ; contains a loop, the playback is set for infinite loop mode. If it does
 ; not, the loop pointer is set to the beginning of the tune, but looping is
-; disabled. You may call loopmusic to modify the defaults afterwards.
+; disabled. You may call loopmusic or setloopcount to modify these defaults
+; afterwards.
 ;
-	.import	.ident(.sprintf("%s%d","startmusic",REV))
-	startmusic	:=	.ident(.sprintf("%s%d","startmusic",REV))
 
 ;............
 ; stopmusic : 
@@ -110,8 +139,6 @@
 ; Halts music playback, silences all voices used by the current tune,
 ; and clears music channel mask
 ;
-	.import	.ident(.sprintf("%s%d","stopmusic",REV))
-	stopmusic	:=	.ident(.sprintf("%s%d","stopmusic",REV))
 
 ;................
 ; setmusicspeed : 
@@ -127,11 +154,9 @@
 ; step functions. stepmusic = once. step_word treats zsm_steps as a 16.8 value
 ; and step_byte treats it as an 8.8 (used if ticks/frame < 255)
 ;
-	.import	.ident(.sprintf("%s%d","setmusicspeed",REV))
-	setmusicspeed	:=	.ident(.sprintf("%s%d","setmusicspeed",REV))
 
-;............
-; loopmusic : 
+;.............
+; force_loop : 
 ; ===========================================================================
 ; Arguments: .A = number of times to loop the music. 0 = infinite
 ; Returns: none
@@ -139,10 +164,34 @@
 ; ---------------------------------------------------------------------------
 ;
 ; Note that if the music was intended to be a one-shot playback (i.e. contains
-; no loop), this will force looping play of the entire song.
+; no loop), this will force looping play of the entire song. Use setloopcount
+; to modify the looper's behavior 
 ;
-	.import	.ident(.sprintf("%s%d","loopmusic",REV))
-	loopmusic	:=	.ident(.sprintf("%s%d","loopmusic",REV))
+
+;...........
+; set_loop : 
+; ===========================================================================
+; Arguments: .A = number of times to loop the music. 0 = infinite
+; Returns: none
+; Affects: none
+; ---------------------------------------------------------------------------
+;
+; Sets the number of repeats that loopback mode will perform after the current
+; pass through the song is finished. If the playback mode is one-shot (no looping)
+; then this will have no effect.
+;
+
+;...............
+; disable_loop : 
+; ===========================================================================
+; Arguments: none
+; Returns: none
+; Affects: none
+; ---------------------------------------------------------------------------
+;
+; When music reaches EOF, playback will stop, regardless of loops in the tune.
+; Has no effect if looping was not already enabled.
+;
 
 ;..............
 ; setcallback : 
@@ -158,15 +207,8 @@
 ; Z=0 if music is stopped, Z=1 if music is playing
 ; .A = number of remaining loops 
 ;
-	.import	.ident(.sprintf("%s%d","setcallback",REV))
-	setcallback	:=	.ident(.sprintf("%s%d","setcallback",REV))
-
-
-; ---------------------------------------------------------------------------
-; to-do: move patchym into a separate .inc file for API
-
-	.import	.ident(.sprintf("%s%d","patchym",REV))
-	patchym	:=	.ident(.sprintf("%s%d","patchym",REV))
+;	.import	.ident(.sprintf("%s%d","setcallback",REV))
+;	setcallback	:=	.ident(.sprintf("%s%d","setcallback",REV))
 
 
 

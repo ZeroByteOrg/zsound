@@ -4,22 +4,27 @@
 .include "macros.inc"
 
 
-IMPORT_TAGGED "nextdata"
-IMPORT_TAGGED "helloworld"
-
 EXPORT_TAGGED "init_player"
 EXPORT_TAGGED "stepmusic"
 EXPORT_TAGGED "startmusic"
 EXPORT_TAGGED "stopmusic"
-EXPORT_TAGGED "data"
 EXPORT_TAGGED "playmusic"
 EXPORT_TAGGED "playmusic_IRQ"
 EXPORT_TAGGED "setmusicspeed"
-EXPORT_TAGGED "loopmusic"
+EXPORT_TAGGED "force_loop"
+EXPORT_TAGGED "set_loop"
+EXPORT_TAGGED "disable_loop"
 EXPORT_TAGGED "setcallback"
 
+; library-internal exports and imports. These probably shouldn't be
+; included in the main api .inc files
+
+IMPORT_TAGGED "nextdata"
+EXPORT_TAGGED "data"
+
+
 ZSM_HDR_SIZE	=	16	; does not include PRG header which isn't loaded
-ZSM_EOF			=	$80	; (equates to pause cmd, value=0)
+ZSM_EOF			=	$80	; (equates to pause cmd with value=0)
 
 .segment "ZEROPAGE"
 
@@ -293,10 +298,7 @@ dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 			sta loop_pointer + SONGPTR::addr+1
 			lda data + SONGPTR::bank
 			sta loop_pointer + SONGPTR::bank
-			lda #<zsmstopper
-			sta ZSM_VECTOR_done
-			lda #>zsmstopper
-			sta ZSM_VECTOR_done + 1
+			jsr disable_loop
 			bra done
 
 calculate_loop:
@@ -323,7 +325,7 @@ calculate_bank:
 			beq die		; if so, then die (FF is an invalid loop bank)
 			sta loop_pointer + SONGPTR::bank
 			lda #0
-			jsr loopmusic
+			jsr force_loop
 			
 done:		pla
 			sta RAM_BANK	; restore the RAM_BANK to what it was before
@@ -441,16 +443,16 @@ add_step:
 			rts
 .endproc
 
-; ---------------------------------------------------------------------------
-; stopmusic: 
-;
+;............
+; stopmusic : 
+; ===========================================================================
 ; Arguments: (none)
 ; Returns: (none)
 ; Affects: A,X,Y
 ; ---------------------------------------------------------------------------
 ;
-; Halts music playback, clears music channel mask.
-; TODO: silence the voices used by the tune.
+; Halts music playback, clears music channel mask, and sets the music pointers
+; to dummy_tune by calling clear_song_pointers
 ;
 
 .segment "CODE"
@@ -478,18 +480,18 @@ nextYM:		inx
 			stz zsm_chanmask
 			
 			; set up VERA data0 port to sweep through the PSG volumes.
-			VERA_SELECT_PSG
+			VERA_SELECT_PSG -3 ; -3 = step amount of -4
 			; VERA_SELECT_PSG macro sets step=0, we need step=4
 			; (will fix macro later to allow optional step=x argument)
-			lda #$31
-			sta VERA_addr_bank	; set step=4
-			lda #$c2			; point data0 at volume register of PSG channel 0.
+;			lda #$31
+;			sta VERA_addr_bank	; set step=4
+			lda #<VRAM_psg+62	; point data0 at volume register of PSG channel 16
 			sta VERA_addr_low
 
-			ldy #0
-PSGloop2:	lda zsm_chanmask+1,y
+			ldy #2
+PSGloop2:	lda zsm_chanmask,y
 			ldx #8			; 8 voices per byte of chanmask
-PSGloop1:	ror
+PSGloop1:	rol
 			bcc skipPSGvoice
 			stz VERA_data0
 			bra nextPSG
@@ -499,18 +501,17 @@ skipPSGvoice:
 nextPSG:					; changing anything.
 			dex
 			bne PSGloop1
-			iny
-			cpy	#2
-			bcc PSGloop2
+			dey
+			bne PSGloop2
 			
 			; music channels are now silenced.
 			
 			jmp clear_song_pointers
 .endproc
 
-; ---------------------------------------------------------------------------
-; stepmusic: 
-;
+; ...........
+; stepmusic :
+; ===========================================================================
 ; Arguments: none
 ; Returns: none
 ;
@@ -610,36 +611,27 @@ user_callback:
 			jmp (ZSM_VECTOR_user)
 .endproc
 
+; ===========================================================================
+
 .segment "CODE"
 .proc zsmstopper: near
-			jsr call_callback
-			jmp stopmusic
-call_callback:
+			jsr stopmusic
 			lda #0	; set Z flag=1 , A = remaining loops = 0
 			jmp (ZSM_VECTOR_notify)
 .endproc
+
+; ===========================================================================
 
 .segment "CODE"
 .proc zsmlooper: near
 			lda #0
 			RECURSION_STOPPER = (*-1)
 			bne die
-			inc RECURSION_STOPPER
 			lda #ZSM_EOF
 			cmp (data)
-			bne exit
-			lda loop_count
-			beq go	; loop_count=0 at time of call = infinite loops
-			dec
-			sta loop_count
-			bne go
-last_go:
-			; last loop. Change done vector to stopmusic
-			lda #<zsmstopper
-			sta ZSM_VECTOR_done
-			lda #>zsmstopper
-			sta ZSM_VECTOR_done
-go:
+			bne no_callback	; (data) is not pointing at an EOF marker
+			; finish playing back the tune after the loop point, up
+			; to the next delay command.
 			lda	loop_pointer + SONGPTR::addr
 			sta	data + SONGPTR::addr
 			lda	loop_pointer + SONGPTR::addr+1
@@ -648,22 +640,38 @@ go:
 			sta data + SONGPTR::bank
 			lda #1
 			sta delay
-			jsr stepmusic	; continue playing on the same update
-			jsr call_callback
-exit:		stz RECURSION_STOPPER
+			inc RECURSION_STOPPER
+			jsr stepmusic	; finish playing this frame's music data
+			stz RECURSION_STOPPER
+			; test for infinite repeat mode
+			lda loop_count
+			beq do_callback
+dec_repeat_count:
+			dec
+			sta loop_count
+			bne continue
+last_go:
+			; last loop. Change done vector to stopmusic
+			sei
+			ldx #<zsmstopper
+			stx ZSM_VECTOR_done
+			ldx #>zsmstopper
+			stx ZSM_VECTOR_done+1
+			cli
+continue:
+			inc	;notify using loop_count's pre-decrement value
+do_callback:
+			ldx #1	; set Z flag = 0
+			jmp (ZSM_VECTOR_notify)
+no_callback:
 			rts
 die:		jmp stopmusic	; if the end of tune is reached twice in the
 							; same frame, something is wrong. Just end.
-call_callback:
-			lda	loop_count
-			ldx #1	; set Z flag = 0
-			jmp (ZSM_VECTOR_notify)
 .endproc
 
 ;............
 ; step_word :
 ; ===========================================================================
-;
 ; Arguments: (none)
 ; Returns: should be similar to step_music - not implemented yet here.
 ; Affects: A,X
@@ -704,54 +712,37 @@ loop:
 done:		rts
 .endproc
 
-; A = number of loops
-.proc loopmusic: near
-		sta loop_count
-		sei					; just in case the program is using IRQ-driven player
-		lda #<zsmlooper
-		sta ZSM_VECTOR_done
-		lda #>zsmlooper
-		sta ZSM_VECTOR_done+1
-		cli
-		rts
+; A = number of loops (forces playback into looping mode)
+.proc force_loop: near
+			sta loop_count
+			sei					; just in case the program is using IRQ-driven player
+			lda #<zsmlooper
+			sta ZSM_VECTOR_done
+			lda #>zsmlooper
+			sta ZSM_VECTOR_done+1
+			cli
+			rts
 .endproc
+
+; A = number of loops (does not force loopback mode if song has no loop defined)
+.proc set_loop: near
+			sta loop_count
+			rts
+.endproc
+
+.proc disable_loop: near
+			sei
+			ldx #<zsmstopper
+			stx ZSM_VECTOR_done
+			ldx #>zsmstopper
+			stx ZSM_VECTOR_done+1
+			cli
+.endproc		
 
 .proc setcallback: near
-		sei
-		stx ZSM_VECTOR_notify
-		sty ZSM_VECTOR_notify+1
-		cli
-		rts
+			sei
+			stx ZSM_VECTOR_notify
+			sty ZSM_VECTOR_notify+1
+			cli
+			rts
 .endproc
-
-;............
-; step_byte : (no longer used - the step_word is fast enough. Save some space.)
-; ===========================================================================
-;
-; Arguments: (none)
-; Returns: should be similar to step_music - not implemented yet here.
-; Affects: A,X
-; ---------------------------------------------------------------------------
-;
-; calls stepmusic however many times specified in ZP step.fracstep
-; This one is used if steps is < 255. (255 goes to 16bit version because
-; chance of carry from frac causing an overflow in a single byte)
-
-;.proc step_byte: near
-;			; early exit if called when delay=0 (music not playing)
-;			lda delay
-;			beq done
-;			clc
-;			lda zsm_fracsteps
-;			adc fracstep
-;			sta fracstep
-;			lda zsm_steps
-;			adc #0
-;			sta step
-;			beq done
-;next_step:
-;			jsr	stepmusic
-;			dec step
-;			bne next_step
-;done:		rts
-;.endproc

@@ -6,15 +6,24 @@
 	bmi :-
 .endmacro
 
-.macro VERA_SELECT_PSG
+.macro VERA_SELECT_PSG stride
 	lda #$FE
 	and VERA_ctrl	; clear bit0 of CTRL register to select data0
 	sta VERA_ctrl
-	lda #$01		; bank 1, 0 stride
+	;set stride = 0 by default, else use stride value provided
+	.ifnblank stride
+	  .if stride < 0
+		 lda #((^VRAM_psg) | $08 | ((0-stride) << 4))
+	  .else
+		 lda #((^VRAM_psg) | (stride << 4))
+	  .endif
+	.else
+	  lda #(^VRAM_psg)
+	.endif
 	sta VERA_addr_bank
-;	lda #$f9		; PSG are on page $F9 of VRAM
 	lda #>VRAM_psg
 	sta VERA_addr_high
+	; not setting low byte - only pointing at the PSG page of VRAM
 .endmacro
 
 ; Since this project is currently designed to build both r38 and r39 compatible

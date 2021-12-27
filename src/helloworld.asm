@@ -26,7 +26,6 @@ nextchar:
 		inx
 		bra nextchar
 done:	RTS                    ; Return to caller
-
 .endproc
 
 .segment "RODATA"

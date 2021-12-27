@@ -17,10 +17,18 @@
 ;		stepmusic from the main loop, as stepmusic clobbers VERA registers and
 ;		is therefore unsafe to use during an IRQ.
 
+; Additional Note: For now, this program also plays a PCM digi clip "SHORYUKEN.PCM"
+; once during the playback at the expiration of a countdown. This is here mostly to
+; test in-context PCM playback functionality. This should be removed and used in
+; a seperate example program such as a basic sound board or something of that
+; nature since it unneccessarily complicates this program a bit. 
+
 ; x16.inc by SlithyMatt - slightly modified for multi-revision support
 .include "x16.inc"		; Import X16-related symbols
 .include "zsound.inc"	; use the zsound library for playback
 .include "pcmplayer.inc"
+
+IMPORT_TAGGED "helloworld"	; REALLY REALLY need to move this OUT of the player library - lol.
 
 ZSM_address = $A000		; memory address to load song (should be in HIRAM bank window)
 ZSM_bank 	= 2			; defines starting bank in HIRAM
@@ -58,15 +66,26 @@ diginame_len = (* - diginame)
 
 .segment "DATA"
 ; PCM parameter table to pass to start_digi
+.if 0
 shoryuken:
-	.word	0			; replace with PCM_address at runtime
-	.byte 	0			; replace with PCM_bank at runtime
+	.word	0			; replaced with PCM_address at runtime
+	.byte 	0			; replaced with PCM_bank at runtime
 	.byte	<(135628)	; size of digi (in bytes)
 	.byte	>(135628)
 	.byte	^(135628)
 	.byte	$3f			; stereo 16bit
 	.byte	(22000/(25000000>>16))+1	; 22khz sample rate
-
+.else
+shoryuken:
+	.word	0			; replaced with PCM_address at runtime
+	.byte 	0			; replaced with PCM_bank at runtime
+	.byte	<(12330)	; size of digi (in bytes)
+	.byte	>(12330)
+	.byte	^(12330)
+	.byte	$0f			; mono 8bit
+	.byte	(8000/(25000000>>16))+1	; 8khz sample rate
+.endif
+	
 PCM_address	:= shoryuken
 PCM_bank	:= shoryuken + 2
 
@@ -100,7 +119,7 @@ line_irq:
 ; -----------------------------------------------------------------
 
 .segment	"CODE"
-			
+
 main:		wai					; save power :)
 			lda	semaphore
 			bne	main			; raster IRQ sets semaphore = 0. Wait for that to happen
@@ -265,7 +284,7 @@ start:
 
 			;  ==== load digi file into memory ====
 
-			; set BANKRAM to the first bank where song should load
+			; set BANKRAM to the first bank where digi should load
 			lda	PCM_bank
 			sta	RAM_BANK
 			; prepare for call to SETNAM Kernal routine
@@ -312,23 +331,25 @@ start:
 
 			cli
 
+			lda #1
+			sta	semaphore		; intilize the IRQ semaphore
+			jsr	helloworld
+
 			; Call startmusic:
-			; X,Y = address of the ZSM data
-			; A   = HIRAM bank of the ZSM data
+			; XY = address of the ZSM data
+			; A  = HIRAM bank of the ZSM data
 			lda #ZSM_bank
 			ldx #<ZSM_address
 			ldy #>ZSM_address
 			jsr startmusic
 
 			;Optional: specify a limited number of loops
-			;da #1		; number of loops (0 = infinite)
-			;sr loopmusic
+			;(forces song to loop, even if it didn't have one defined)
+			;lda #1		; number of loops (0 = infinite)
+			;jsr loopmusic
 
 			ldx #<helloworld
 			ldy #>helloworld
 			jsr setcallback
 
-			lda #1
-			sta	semaphore		; intilize the IRQ semaphore
-			jsr	helloworld
 			jmp main
