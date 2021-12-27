@@ -36,6 +36,9 @@ IMPORT_TAGGED "patchym"
 ; project behavior. Uncomment to include it, but it really isn't needed...
 ; IMPORT_TAGGED "helloworld"
 
+
+;---------------------------------------------------[CORE ROUTINES]----------
+
 ;..............
 ; init_player :
 ; ===========================================================================
@@ -43,35 +46,11 @@ IMPORT_TAGGED "patchym"
 ; Returns: (none)
 ; Affects: A
 ; ---------------------------------------------------------------------------
+; Call this before using any of the other routines.
+;
 ; Initializes the memory locations used by ZSM player to a stopped playback
 ; state, with the data pointer pointing at a dummy "end-of-data" command frame.
-;
-;	.import	.ident(.sprintf("%s%d","init_player",REV))
-;	init_player	:=	.ident(.sprintf("%s%d","init_player",REV))
 
-
-
-;............
-; stepmusic :
-; ===========================================================================
-; Arguments: (none)
-; Returns: Carry flag: (currently broken) 0=playing, 1=stopped or looped
-; Affects: A,X,Y, VERA CTRL and data port 0 address registers
-; ---------------------------------------------------------------------------
-;
-; Advances the music by one tick.
-; Music must be initialized by startmusic before this will have any effect.
-;
-; Call as many times per frame as required by the ZSM's playback rate.
-; (usually 60Hz - once per frame)
-; THIS ROUTINE IS NOT SAFE to call directly during IRQ, as it clobbers VERA
-; registers w/o fixing them (for speed reasons). If your program
-; is designed to run the music player during an IRQ, use one of the IRQ-safe 
-; wrapper functions that save and restore VERA before calling this
-; core routine, or else be sure to save the states of the affected VERA registers
-;
-;	.import	.ident(.sprintf("%s%d","stepmusic",REV))
-;	stepmusic	:=	.ident(.sprintf("%s%d","stepmusic",REV))
 
 ;............
 ; playmusic :
@@ -80,7 +59,6 @@ IMPORT_TAGGED "patchym"
 ; Returns: none
 ; Affects: See stepmusic
 ; ---------------------------------------------------------------------------
-;
 ; 60hz frontend for stepmusic.
 ; Call it once per frame to play ZSM music.
 ;
@@ -93,7 +71,7 @@ IMPORT_TAGGED "patchym"
 ;       if you wish to run the music update during the IRQ handler, or else your
 ;		handler should save and restore the VERA ctrl register and the address
 ;		registers for the data0 data port.
-;
+
 
 ;................
 ; playmusic_IRQ :
@@ -107,7 +85,31 @@ IMPORT_TAGGED "patchym"
 ;
 ; Alternatively, you can use this interface as a VERA-safe call from outside
 ; of IRQ handlers. A,X,and Y are still clobbered by stepmusic.
-; 
+
+
+;............
+; stepmusic :
+; ===========================================================================
+; Arguments: (none)
+; Returns: Carry flag: (currently broken) 0=playing, 1=stopped or looped
+; Affects: A,X,Y, VERA CTRL and data port 0 address registers
+; ---------------------------------------------------------------------------
+; Advances the music by one tick.
+; Music must be initialized by startmusic before this will have any effect.
+;
+; This routine may be removed from the API in future revisions!
+;
+; Call as many times per frame as required by the ZSM's playback rate.
+; (usually 60Hz - once per frame)
+; THIS ROUTINE IS NOT SAFE to call directly during IRQ, as it clobbers VERA
+; registers w/o fixing them (for speed reasons). If your program
+; is designed to run the music player during an IRQ, use one of the IRQ-safe 
+; wrapper functions that save and restore VERA before calling this
+; core routine, or else be sure to save the states of the affected VERA registers
+
+
+;-----------------------------------------------------[Music Control]--------
+
 
 ;.............
 ; startmusic : 
@@ -118,15 +120,19 @@ IMPORT_TAGGED "patchym"
 ; Returns: Carry flag: 0=success, 1=fail
 ; Affects: A,X,Y
 ; ---------------------------------------------------------------------------
+; Uses the ZSM header to determine the default playback parameters.
+; Copies them into the active data structures, and adjusts header pointers
+; such as loop and PCM (future) sample bank offsets relative to where the
+; ZSM was actually loaded into memory.
 ;
-; Initializes the song data pointer, loop pointer, and sets delay = 1
-; Copies channel mask into main memory, and calls setmusicspeed
+; Calls setmusicspeed with the song's default play speed from header.
 ; Defaults the looping behavior based on the ZSM being played. If the tune
 ; contains a loop, the playback is set for infinite loop mode. If it does
-; not, the loop pointer is set to the beginning of the tune, but looping is
-; disabled. You may call loopmusic or setloopcount to modify these defaults
+; not, the loop pointer is set to the beginning of the tune, but looping
+; remains disabled.
+; You may call loopmusic or setloopcount to modify these defaults
 ; afterwards.
-;
+
 
 ;............
 ; stopmusic : 
@@ -135,10 +141,9 @@ IMPORT_TAGGED "patchym"
 ; Returns: (none)
 ; Affects: (none)
 ; ---------------------------------------------------------------------------
-;
 ; Halts music playback, silences all voices used by the current tune,
 ; and clears music channel mask
-;
+
 
 ;................
 ; setmusicspeed : 
@@ -148,12 +153,11 @@ IMPORT_TAGGED "patchym"
 ; Returns: (none)
 ; Affects: A,X,Y
 ; ---------------------------------------------------------------------------
-;
 ; Converts Hz into ticks/frame, sets the zsm_steps.zsm_fracstep variables
 ; and modifies the shell function playmusic: to call one of the three music
 ; step functions. stepmusic = once. step_word treats zsm_steps as a 16.8 value
 ; and step_byte treats it as an 8.8 (used if ticks/frame < 255)
-;
+
 
 ;.............
 ; force_loop : 
@@ -162,11 +166,9 @@ IMPORT_TAGGED "patchym"
 ; Returns: none
 ; Affects: none
 ; ---------------------------------------------------------------------------
-;
 ; Note that if the music was intended to be a one-shot playback (i.e. contains
 ; no loop), this will force looping play of the entire song. Use setloopcount
 ; to modify the looper's behavior 
-;
 
 ;...........
 ; set_loop : 
