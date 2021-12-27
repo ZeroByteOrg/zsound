@@ -559,8 +559,9 @@ nextnote:
 			bit #$40			; 2
 			bne YMPCM			; 
 playPSG:						; 2
-			clc					; 2
-			adc #$c0			; 2		; ...to offset it properly into VRAM location
+			ora #$c0			; faster way to add $C0 to a value known to be < $c0. :)
+;			clc					; 2
+;			adc #$c0			; 2		; ...to offset it properly into VRAM location
 			sta VERA_addr_low	; 4		; VERA data0 now points at selected PSG register
 			jsr nextdata		; +X
 			lda (data)			; 5		; get the value for writing into PSG

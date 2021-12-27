@@ -7,6 +7,8 @@
 ;as symbol38 or symbol39. The macros "undo" that tag.
 ; eg: playmusic39: --> playmusic:
 
+.ifndef __ZSOUND_TAG_SYMBOLS__
+__ZSOUND_TAG_SYMBOLS__ = 1
 .macro IMPORT_TAGGED symbol
 	.import	.ident(.sprintf("%s%d",symbol,REV))
 	.ident(.sprintf("%s",symbol))	:=	.ident(.sprintf("%s%d",symbol,REV))
@@ -16,6 +18,7 @@
 	.importzp .ident(.sprintf("%s%d",symbol,REV))
 	.ident(.sprintf("%s",symbol))	:=	.ident(.sprintf("%s%d",symbol,REV))
 .endmacro
+.endif
 
 IMPORT_TAGGED "init_player"
 IMPORT_TAGGED "stepmusic"
@@ -130,7 +133,7 @@ IMPORT_TAGGED "patchym"
 ; contains a loop, the playback is set for infinite loop mode. If it does
 ; not, the loop pointer is set to the beginning of the tune, but looping
 ; remains disabled.
-; You may call loopmusic or setloopcount to modify these defaults
+; You may call set_loop, force_loop, or disable_loop to modify these defaults
 ; afterwards.
 
 
@@ -145,6 +148,9 @@ IMPORT_TAGGED "patchym"
 ; and clears music channel mask
 
 
+; ------------------------------------------------[On-The-Fly Controls]------
+
+
 ;................
 ; setmusicspeed : 
 ; ===========================================================================
@@ -153,10 +159,12 @@ IMPORT_TAGGED "patchym"
 ; Returns: (none)
 ; Affects: A,X,Y
 ; ---------------------------------------------------------------------------
-; Converts Hz into ticks/frame, sets the zsm_steps.zsm_fracstep variables
-; and modifies the shell function playmusic: to call one of the three music
-; step functions. stepmusic = once. step_word treats zsm_steps as a 16.8 value
-; and step_byte treats it as an 8.8 (used if ticks/frame < 255)
+; Converts Hz into ticks/frame, and adjusts playback speed to the new rate.
+; Setting a 60hz song to play back at 120hz will play at double speed and
+; setting it to 30hz will play at 1/2 speed.
+; (I suppose I should make an accessor function to return the native speed
+; of a ZSM so that you don't have to guess in order to make calculated speed
+; changes)
 
 
 ;.............
@@ -167,8 +175,10 @@ IMPORT_TAGGED "patchym"
 ; Affects: none
 ; ---------------------------------------------------------------------------
 ; Note that if the music was intended to be a one-shot playback (i.e. contains
-; no loop), this will force looping play of the entire song. Use setloopcount
-; to modify the looper's behavior 
+; no loop), this will force looping play of the entire song. Use set_loop
+; to modify the looper's behavior without forcing looping play of non-looped
+; songs.
+
 
 ;...........
 ; set_loop : 
@@ -177,41 +187,35 @@ IMPORT_TAGGED "patchym"
 ; Returns: none
 ; Affects: none
 ; ---------------------------------------------------------------------------
-;
 ; Sets the number of repeats that loopback mode will perform after the current
 ; pass through the song is finished. If the playback mode is one-shot (no looping)
 ; then this will have no effect.
-;
+
 
 ;...............
-; disable_loop : 
+; disable_loop :
 ; ===========================================================================
 ; Arguments: none
 ; Returns: none
 ; Affects: none
 ; ---------------------------------------------------------------------------
-;
 ; When music reaches EOF, playback will stop, regardless of loops in the tune.
 ; Has no effect if looping was not already enabled.
-;
+
+
+;-----------------------------------------------------[Information]----------
+
 
 ;..............
-; setcallback : 
+; setcallback :
 ; ===========================================================================
 ; Arguments:
 ;	.XY = address of callback function
 ; Returns: none
 ; Affects: none
 ; ---------------------------------------------------------------------------
-;
 ; Sets a notification callback whenever a tune finishes or loops.
 ; The callback passes the following parameters:
 ; Z=0 if music is stopped, Z=1 if music is playing
 ; .A = number of remaining loops 
-;
-;	.import	.ident(.sprintf("%s%d","setcallback",REV))
-;	setcallback	:=	.ident(.sprintf("%s%d","setcallback",REV))
-
-
-
 
