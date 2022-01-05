@@ -147,10 +147,10 @@ main:		wai					; save power :)
 trigger:
 			stz countdown
 			stz countdown+1
-			ldx #<shoryuken
-			ldy #>shoryuken
-			lda #0
-			jsr start_digi
+			ldx #<shoryuken		; load address of PCM parameter table "shoryuken"
+			ldy #>shoryuken		; into .XY
+			lda #0				; A = memory bank where table is stored.
+			jsr start_digi		; (in this case, main memory, so A doesn't matter)
 			bra	main
 notrigger:
 			lda countdown+1
@@ -348,8 +348,10 @@ start:
 			;lda #1		; number of loops (0 = infinite)
 			;jsr loopmusic
 
+			; zsmplayer has a callback feature for when a song loops/ends.
+			; The callback 
 			ldx #<helloworld
 			ldy #>helloworld
-			jsr setcallback
+			jsr set_callback
 
 			jmp main

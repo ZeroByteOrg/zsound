@@ -30,7 +30,8 @@ IMPORT_TAGGED "setmusicspeed"
 IMPORT_TAGGED "force_loop"
 IMPORT_TAGGED "set_loop"
 IMPORT_TAGGED "disable_loop"
-IMPORT_TAGGED "setcallback"
+IMPORT_TAGGED "set_callback"
+IMPORT_TAGGED "clear_callback"
 
 ; to-do: move patchym into a separate .inc file for API
 IMPORT_TAGGED "patchym"
@@ -206,8 +207,8 @@ IMPORT_TAGGED "patchym"
 ;-----------------------------------------------------[Information]----------
 
 
-;..............
-; setcallback :
+;...............
+; set_callback :
 ; ===========================================================================
 ; Arguments:
 ;	.XY = address of callback function
@@ -218,4 +219,13 @@ IMPORT_TAGGED "patchym"
 ; The callback passes the following parameters:
 ; Z=0 if music is stopped, Z=1 if music is playing
 ; .A = number of remaining loops 
+
+;.................
+; clear_callback :
+; ===========================================================================
+; Arguments: none
+; Returns: none
+; Affects: A
+; ---------------------------------------------------------------------------
+; Disables the EOF notification callback 
 

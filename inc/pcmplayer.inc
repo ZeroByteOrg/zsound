@@ -2,6 +2,9 @@
 	REV = 39
 .endif
 
+.ifndef __PCMPLAYER_INC__
+__PCMPLAYER_INC__ = 1
+
 ;Macros to import the zsound version-tagged symbols as non-tagged symbols.
 ;Zsound contains symbols for r38 and r39 compatible builds, and exports them
 ;as symbol38 or symbol39. The macros "undo" that tag.
@@ -37,6 +40,8 @@ IMPORT_TAGGED "init_pcm"
 IMPORT_TAGGED "start_digi"
 IMPORT_TAGGED "play_pcm"
 IMPORT_TAGGED "stop_pcm"
+
+.endif
 
 ;...........
 ; init_pcm :

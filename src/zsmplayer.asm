@@ -14,7 +14,8 @@ EXPORT_TAGGED "setmusicspeed"
 EXPORT_TAGGED "force_loop"
 EXPORT_TAGGED "set_loop"
 EXPORT_TAGGED "disable_loop"
-EXPORT_TAGGED "setcallback"
+EXPORT_TAGGED "set_callback"
+EXPORT_TAGGED "clear_callback"
 
 ; library-internal exports and imports. These probably shouldn't be
 ; included in the main api .inc files
@@ -523,9 +524,8 @@ nextPSG:					; changing anything.
 ; (usually 60Hz - once per frame)
 ; THIS ROUTINE IS NOT SAFE to call directly during IRQ, as it clobbers VERA
 ; registers w/o fixing them (for speed reasons). If your program
-; is designed to run the music player during an IRQ, use one of the
-; IRQ-safe wrapper functions that save and restore VERA before calling this
-; core routine.
+; is designed to run the music player during an IRQ, use one of the IRQ-safe
+; frontend routines provided.
 ;
 
 .proc stepmusic: near
@@ -612,7 +612,10 @@ user_callback:
 			jmp (ZSM_VECTOR_user)
 .endproc
 
+; ............
+; zsmstopper :
 ; ===========================================================================
+; EOF callback routine - this one is called when the music is set not to loop
 
 .segment "CODE"
 .proc zsmstopper: near
@@ -621,7 +624,12 @@ user_callback:
 			jmp (ZSM_VECTOR_notify)
 .endproc
 
+; ...........
+; zsmlooper :
 ; ===========================================================================
+; EOF callback routine - it loops the music either an infinite or a set number
+; of times. If the final play-through is starting, it changes the EOF callback
+; to be zsmstopper instead.
 
 .segment "CODE"
 .proc zsmlooper: near
@@ -713,6 +721,10 @@ loop:
 done:		rts
 .endproc
 
+;================================================================
+
+; simple control routines. (these should probably just be macros?)
+
 ; A = number of loops (forces playback into looping mode)
 .proc force_loop: near
 			sta loop_count
@@ -740,10 +752,20 @@ done:		rts
 			cli
 .endproc		
 
-.proc setcallback: near
+.proc set_callback: near
 			sei
 			stx ZSM_VECTOR_notify
 			sty ZSM_VECTOR_notify+1
+			cli
+			rts
+.endproc
+
+.proc clear_callback: near
+			sei
+			lda #<null_handler
+			sta ZSM_VECTOR_notify
+			lda #>null_handler
+			sta ZSM_VECTOR_notify
 			cli
 			rts
 .endproc
