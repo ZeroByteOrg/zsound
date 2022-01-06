@@ -10,12 +10,13 @@ EXPORT_TAGGED "startmusic"
 EXPORT_TAGGED "stopmusic"
 EXPORT_TAGGED "playmusic"
 EXPORT_TAGGED "playmusic_IRQ"
-EXPORT_TAGGED "setmusicspeed"
+EXPORT_TAGGED "set_music_speed"
 EXPORT_TAGGED "force_loop"
 EXPORT_TAGGED "set_loop"
 EXPORT_TAGGED "disable_loop"
 EXPORT_TAGGED "set_callback"
 EXPORT_TAGGED "clear_callback"
+EXPORT_TAGGED "get_music_speed"
 
 ; library-internal exports and imports. These probably shouldn't be
 ; included in the main api .inc files
@@ -43,6 +44,7 @@ loop_count:		.res	1
 zsm_chanmask:	.tag	CHANMASK
 zsm_fracsteps:	.res	3	; 16.8 fixed point: n steps per 60hz frame
 zsm_scale60hz:	.res	1	; flag for whether to use the rate->60hz conversion player
+zsm_rate:		.res	2	; the native tick rate of the ZSM from its header
 
 zsm_steps	:= zsm_fracsteps + 1
 
@@ -68,17 +70,20 @@ ZSM_VECTOR_COUNT	= (*-ZSM_VECTOR_TABLE)
 	cmp #1
 	bne @set_scale
 @set_1:
+	sei
 	lda #<stepmusic
 	sta ZSM_VECTOR_play
 	lda #>stepmusic
 	sta ZSM_VECTOR_play+1
-	bra @done	; the next command after this macro's use is rts....
+	bra @done
 @set_scale:
+	sei
 	lda #<step_word
 	sta ZSM_VECTOR_play
 	lda #>step_word
 	sta ZSM_VECTOR_play+1
 @done:
+	cli
 .endmacro
 
 ;--------------------------------------------------------------------------
@@ -205,7 +210,9 @@ next_vector:
 			sta step
 			sta zsm_steps
 			stz zsm_steps+1
-			stz zsm_steps+2
+			stz zsm_fracsteps
+			stz zsm_rate
+			stz zsm_rate+1
 			rts
 dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 .endproc
@@ -274,12 +281,14 @@ dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 			
 			; get song playback rate and convert to ticks/frame
 			lda (data)
-			tax				; X is the low byte argument to setmusicspeed
+			sta zsm_rate
+			tax				; X is the low byte argument to set_music_speed
 			jsr nextdata
 			lda (data)
-			tay				; Y is the hi byte argument to setmusicspeed
+			sta zsm_rate+1
+			tay				; Y is the hi byte argument to set_music_speed
 			jsr nextdata
-			jsr setmusicspeed
+			jsr set_music_speed
 			
 			; move pointer to the first byte of music data
 			ldx #5			; currently 5 bytes of reserved (unused) space
@@ -342,8 +351,8 @@ die:
 			rts
 .endproc
 
-;................
-; setmusicspeed : 
+;..................
+; set_music_speed : 
 ; ===========================================================================
 ; Arguments:
 ;	X/Y	: Playback speed in Hz. (x=lo, y=hi)
@@ -360,7 +369,7 @@ die:
 ; code to just write 0001.00 into memory and exit early, but I've chosen to
 ; just let the routine run in order to optimize a bit for code size.
 ;
-.proc setmusicspeed: near
+.proc set_music_speed: near
 			; X/Y = tick rate (Hz) - divide by 60 and store to zsm_steps
 			; use the ZP variable as tmp space
 			
@@ -750,6 +759,7 @@ done:		rts
 			ldx #>zsmstopper
 			stx ZSM_VECTOR_done+1
 			cli
+			rts
 .endproc		
 
 .proc set_callback: near
@@ -767,5 +777,11 @@ done:		rts
 			lda #>null_handler
 			sta ZSM_VECTOR_notify
 			cli
+			rts
+.endproc
+
+.proc get_music_speed: near
+			ldx zsm_rate
+			ldy zsm_rate+1
 			rts
 .endproc

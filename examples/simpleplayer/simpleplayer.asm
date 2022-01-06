@@ -24,18 +24,14 @@
 ; nature since it unneccessarily complicates this program a bit. 
 
 ; x16.inc by SlithyMatt - slightly modified for multi-revision support
-.include "x16.inc"		; Import X16-related symbols
-.include "zsound.inc"	; use the zsound library for playback
-.include "pcmplayer.inc"
+.include "x16.inc"			; Import X16-related symbols
+.include "zsmplayer.inc"	; use the zsound zsm player module
+.include "pcmplayer.inc"	; use the zsound pcm player module
 
 IMPORT_TAGGED "helloworld"	; REALLY REALLY need to move this OUT of the player library - lol.
 
 ZSM_address = $A000		; memory address to load song (should be in HIRAM bank window)
 ZSM_bank 	= 2			; defines starting bank in HIRAM
-
-;PCM_address = $B46A
-;PCM_bank	= 2
-
 
 BAR_VISIBLE_MODE	= $31
 BAR_HIDDEN_MODE		= $11

@@ -1,9 +1,9 @@
 .ifndef REV
-	REV=38
+	REV=39
 .endif
 
 .include "x16.inc"
-.include "zsound.inc"
+.include "zsmplayer.inc"
 
 ; Background player for BASIC environment. Load a ZSM into HIRAM at
 ; address $A000, bank 2 and then use the API to start/stop playback.
@@ -18,7 +18,7 @@
 ; with the player. Functions are start, stop, speed, and uninstall.
 ; start = initialize the player and install IRQ (if needed)
 ; stop  = stops music and restores the original IRQ vector at $314
-; setmusicspeed = direct call to zsm player API. Expects X/Y to hold
+; set_music_speed = direct call to zsm player API. Expects X/Y to hold
 ; 					the playback speed in Hz.
 ;
 ; use STARTUP segment to ensure these are found at the memory address where
@@ -26,9 +26,9 @@
 .segment "STARTUP"
 	jmp	start			; SYS call for starting the music
 	jmp stop			; SYS call to uninstall the player IRQ
-	jmp setmusicspeed	; SYS call for adjusting playback speed
+	jmp set_music_speed	; SYS call for adjusting playback speed
 
-; setmusicspeed and stopmusic are directly part of the player library and
+; set_music_speed and stopmusic are directly part of the player library and
 ; do not use any front-end code from this shell
 
 
