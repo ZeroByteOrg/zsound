@@ -112,13 +112,3 @@ IMPORT_TAGGED "stop_pcm"
 ; In the future, more granular controls are planned, but the exact
 ; nature and functionality are as yet to be determined.
 
-
-;	.import	.ident(.sprintf("%s%d","init_pcm",REV))
-;	init_pcm	:=	.ident(.sprintf("%s%d","init_pcm",REV))
-;	.import	.ident(.sprintf("%s%d","start_digi",REV))
-;	start_digi	:=	.ident(.sprintf("%s%d","start_digi",REV))
-;	.import	.ident(.sprintf("%s%d","play_pcm",REV))
-;	play_pcm	:=	.ident(.sprintf("%s%d","play_pcm",REV))
-;	.import	.ident(.sprintf("%s%d","stop_pcm",REV))
-;	stop_pcm	:=	.ident(.sprintf("%s%d","stop_pcm",REV))
-

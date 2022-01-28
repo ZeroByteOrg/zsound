@@ -203,6 +203,7 @@ last_frame:
 .endproc
 
 
+.if 0
 ;---------------------------------------------------------------
 ; load_fifo: (older version here for reference / resurrection)
 ; assumes pcm_ptr:pcm_bank point at the current byte of the sample stream
@@ -270,6 +271,7 @@ finished:
 	sta RAM_BANK
 	rts
 .endproc
+.endif
 
 ;............
 ; load_fifo :
