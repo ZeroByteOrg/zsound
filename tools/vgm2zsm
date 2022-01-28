@@ -47,7 +47,7 @@
 */
 
 $rest_index = null;
-$opts = getopt('d4bft::', [], $rest_index);
+$opts = getopt('d4bft::', array('ymdac'), $rest_index);
 $filenames = array_slice($argv, $rest_index);
 
 if (isset($opts['t']) && ($opts['t'] !== false)) {
@@ -890,39 +890,18 @@ if (($vgm[0x09] < 2) && ($vgm[0x08] < 0x50)) {
 }
 else {
 	$i = OFFSET + read_uint32(OFFSET);
-	//$i = OFFSET;
-	//$i += $vgm[OFFSET];
-	//$i += $vgm[OFFSET+1] << 8;
-	//$i += $vgm[OFFSET+2] << 16;
-	//$i += $vgm[OFFSET+3] << 24;
 }
 
 $opnclock = read_uint32(0x44) & 0xbfffffff;
-//$opnclock += $vgm[0x44];
-//$opnclock += $vgm[0x45] << 8;
-//$opnclock += $vgm[0x46] << 16;
-//$opnclock += $vgm[0x47] << 24;
-//$opnclock &= 0xbfffffff; // bit 30 = dual chip flag. Ignore it.
+$opnclock &= 0xbfffffff; // bit 30 = dual chip flag. Ignore it.
 
 $opmclock = read_uint32(0x30) & 0xbfffffff; // bit 30 = dual chip flag. Ignore it.
-//$opmclock += $vgm[0x30];
-//$opmclock += $vgm[0x31] << 8;
-//$opmclock += $vgm[0x32] << 16;
-//$opmclock += $vgm[0x33] << 24;
-//$opmclock &= 0xbfffffff; // bit 30 = dual chip flag. Ignore it.
+$opmclock &= 0xbfffffff; // bit 30 = dual chip flag. Ignore it.
 
 $opn2clock = read_uint32(0x2c);
-//$opn2clock += $vgm[0x2c];
-//$opn2clock += $vgm[0x2d] << 8;
-//$opn2clock += $vgm[0x2e] << 16;
-//$opn2clock += $vgm[0x3f] << 24;
 
 $ayclock = read_uint32(0x74) & 0xbfffffff;
-//$ayclock += $vgm[0x74];
-//$ayclock += $vgm[0x75] << 8;
-//$ayclock += $vgm[0x76] << 16;
-//$ayclock += $vgm[0x77] << 24;
-//$ayclock &= 0xbfffffff; // bit 30 = dual chip flag. Ignore it.
+$ayclock &= 0xbfffffff; // bit 30 = dual chip flag. Ignore it.
 
 DEBUG("OPN clock rate = %d\n",$opnclock);
 //$opnclock *= 2; // test
@@ -933,16 +912,12 @@ if ($opn2clock > 0) { $opnclock = $opn2clock; }
 
 if ($ayclock > 0 ) { $ayclock *= 1; }
 else { $ayclock = $opnclock / 3; }
+//else { $ayclock = $opnclock / 4; }  // rudebreaker.vgm is correct with -b and this.
 
 // test for warp:
 //$ayclock = $ayclock / 2;
 
 $loopstart = 0x1c + read_uint32(0x1c);
-//$loopstart += $vgm[0x1c];
-//$loopstart += $vgm[0x1d]<<8;
-//$loopstart += $vgm[0x1e]<<16;
-//$loopstart += $vgm[0x1f]<<24;
-
 
 define ("EOF",count($vgm));
 
@@ -1078,7 +1053,7 @@ while ($i < EOF) {
 		$ignore = true;	// don't send to translate_opn() 
 		break;
 	case 0x2b: // DAC enable
-		$want_dac = ($d & 0x80) == 0x80;
+		$want_dac = (($d & 0x80) == 0x80) && isset($opts["ymdac"]);
 		if (( $ymDAC['stream'] === false ) && $want_dac)
 		{
 			// open a new output file for streaming the DAC data into.

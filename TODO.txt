@@ -8,7 +8,7 @@ Core Features:
 			- 16 bytes for PSG Volume cacheing
 			? whatver amount of space needed to store the volume settings
 		! "tracks" for mixer levels: music, per-channel. (Master? , chip-wide?
-	- SFX playback
+	- SFX playback (base implementation completed)
 		- ZFX format specification finalized
 			- KEEP CORE DESIGN / ARCHITECTURE GOALS IN MIND!!!
 			- counted loop support?
@@ -16,34 +16,41 @@ Core Features:
 			- should ZFX playback routine allow transposition?
 			- should ZFX playback routine allow playback speed changes?
 		- Data structures for per-channel state (delay,pointer)(loop?)
-		- 
-		
+
 	- getchannel / releasechannel
-	- PCM playback as standalone routines
+	- PCM playback as standalone routines (done)
 	- PCM support in ZSM music
 	- basic access routines to chips e.g. playnote(chip,voice,pitch)
-	
 
-
-Investigate using macro-defined symbols to cut down the amount of conditional mumbo-jumbo at the beginning of the ASM files.
-.ident(.printf()):
-(*DONE*)
-
-
-Create a Makefile for the examples/ subfolder to build those programs, and include it in the master Makefile as target "examples"
-
-Fix documentation to reflect single library multi-X16-revision support.
-
-Implement used-channel mask in zsmplayer.
-(*DONE*)
-
-Implement SFX stream player routines to compliment the music routine.
-(*DONE*) (basic implementation only)
 
 Volume support:
 	- fadein/fadeout routines for music
 	- per-voice volume - music volume
 	- master volume? (or is that just too much?)
 	- api for setting these
+
+C wrapper:
+	- waiting until players' APIs are finalizaed to avoid duplicate effort when modifying any of those
+	
+ZSM2VGM rewrite:
+	- rewrite in Python or in C++ as native application
+	
+RAW API:
+	- in addition to patchym, create more basic functions such as init routines for OPM and PSG, etc.
+	
+
+Create a Makefile for the examples/ subfolder to build those programs, and include it in the master Makefile as target "examples"
+
+Fix documentation to reflect single library multi-X16-revision support.
+
+Investigate using macro-defined symbols to cut down the amount of conditional mumbo-jumbo at the beginning of the ASM files.
+.ident(.printf()):
+(*DONE*)
+
+Implement used-channel mask in zsmplayer.
+(*DONE*)
+
+Implement SFX stream player routines to compliment the music routine.
+(*DONE*) (basic implementation only)
 
 

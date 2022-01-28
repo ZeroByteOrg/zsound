@@ -1,0 +1,56 @@
+Zsound is built to support r38 and r39 in a single .lib file.
+
+The assembly include files each begin with a directive to define
+REV=39 (I tend to use 39 by default). You can override this
+by specifying --asm-define REV=xx (currently 38 or 39) when
+building a source file which includes functions from zsound.
+
+e.g.:
+cl65 -t cx16 --asm-define REV=38 -o REV38.PRG myprogram.asm zsound.lib
+cl65 -t cx16 --asm-define REV=39 -o REV39.PRG myprogram.asm zsound.lib
+
+This allows projects to be built for R38 or R39 without
+having to re-compile zsound.lib for that particular revision.
+
+Whenever R39 is made official, this functionality will be removed
+and zsound will thereafter require R39.
+
+
+REVS VS. ZSM FILES:
+
+One key item that differs between R38 and R39 is the clock speed
+of the YM2151 chip. As of R39 (and on the real hardware), the
+YM2151 is clocked at 3.5MHz which is the reference value given by
+Yamaha. Earlier revs used 4MHz. This alters the pitch of the sound
+it produces. Therefore, you will find many examples where the music
+files exist as BGM38.ZSM and BGM39.ZSM
+
+ZSM itself is compatible with either revision, but since the tuning
+differs, I have created ZSM files tailored to each revision so that
+the pitch is correct. This is particularly important for music which
+uses both the YM and the VERA PSG, as the PSG does NOT change pitch
+between R38 and R39. Thus, out-of-tune FM voices are quite jarring.
+
+The VGM2ZSM tool allows you to specify which revision it should
+tune its output for. By default, it uses the correct 3.5MHz tuning.
+To make a ZSM file tuned for R38, use command line option -4 to
+specify 4MHz clocking.
+
+e.g.:
+vgm2zsm -4 rastan.vgm RASTAN.ZSM
+
+I had considered making the library perform this pitch alteration
+during runtime in order to eliminate the need for keeping multiple
+music versions around. However, since R38 should be going away in
+the future, I feel it is better to keep the code smaller and faster.
+
+You will see in the example programs that my solution is to simply
+use a conditional branch in the code where file names are specified.
+
+.if REV=38
+filename: .byte "bgm38.zsm"
+.else
+filename: .byte "bgm39.zsm"
+.endif
+
+

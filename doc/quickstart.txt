@@ -1,0 +1,115 @@
+This is a quick start guide to using Zsound's modules in your
+Commander X16 projets.
+
++----------------------+
+: 1: Build zsound.lib: :
++----------------------+
+In the main zsound directory, use the make to build the archive:
+make lib
+
+This creates ./lib/zsound.lib
+
++------------------------+
+: 2: Build the examples: :
++------------------------+
+
+For each example, enter the directory and use build.sh to create
+the various example programs. build.sh allows you to specify
+which emulator/ROM version you wish to compile for:
+cd examples/simpleplayer
+./build.sh 38
+
+
++------------------------------------+
+: 3: Use zsound in your own project: :
++------------------------------------+
+
+To use zsound in your project, copy zsound.lib and the desired
+include files into your project's folder:
+cp lib/zsound.lib inc/*.inc /path/to/your/project/
+
+Include the desired player in your assembly source:
+.include "zsmplayer.inc"
+
+The basic method for using any of the three players is to
+first call its init routine prior to using any of the other
+functions.
+
+Typical usage pattern is:
+init
+start
+call player once per frame
+stop
+
+To build your program with zsound, you must specify zsound as
+a source file for the linker to use:
+cl65 -t cx16 -o myprogram.prg zsound.lib
+
++-----------------------+
+: 4: The tools scripts: :
++-----------------------+
+
+Either copy the scripts from tools into a folder in your executable
+path, or add the tools folder to your path environment variable.
+This is pretty much the same with any command-line utilities you
+install. Whatever method you use should be fine.
+
+PHP
+The current tools are written in PHP. While PHP is known as a
+web scripting language, you do not need to have any kind of
+web server installed or running to use PHP. If it is not
+available, then feel free to install just the command-line
+interpreter.
+
++--------------+
+: 5: Resources :
++--------------+
+
+Several VGM files are included in the resources directory
+Use the vgm2zsm tool to convert them into ZSM.
+
+e.g.:
+vgm2zsm rastan.vgm RASTAN.ZSM
+(assuming vgm2zsm is in the path)
+
+There is a large archive of VGM packs available at http://vgmrips.net
+Furthermore, you can use Deflemask to author your own music. Use its
+VGM export feature to write your music out to a VGM file, and then
+convert it using vgm2zsm
+
+As vgm2zsm supports the YM2612, you can use the Sega Genesis mode of
+Deflemask to have 3 square wave PSG channels and one noise channel
+at the cost of 2 FM channels. Use standard mode, not 3-CH mode, as
+3-CH mode is not supported by the conversion script, as there is no
+way I can think of to even simulate this on YM2151.
+
+Deflemask's Arcade mode uses the YM2151 as the sound chip, as well as
+the Sega PCM chip (Sega Arcade, not Genesis) for PCM tracks.
+
+At this time, neither the SegaPCM nor the YM2612 DAC (Genesis Digital
+audio) are supported by the tools, but ZSM format was designed to
+allow this funtionality in the future.
+
+As for the ZFX sound effects, those currently must be built by hand.
+Hopefully, either I or someone in the community will create an sfx
+authoring tool for the format.
+
++--------+
+: 6: PCM :
++--------+
+
+If you wish to play PCM audio, you can use tools such as sox or
+Audacity to export raw PCM data. Export it as raw, 8 or 16 bit SIGNED
+values, stereo or mono, and at whatever sample rate you require.
+
+Technically, you should add a dummy 2-byte header to the file, as the
+X16 Kernal drops these 2 bytes when loading files, but in actuality,
+nobody will notice 2 missing samples from the beginning of a PCM file.
+
+Load the PCM file somewhere into banked RAM, create a table of the PCM
+parameters, and pass a pointer to the table in order to start playback.
+(see example programs for further details)
+
+An example of converting a WAV file using sox:
+sox example.wav -t raw -b 8 -c 1 -r 16000 -e unsigned-integer EXAMPLE.PCM
+

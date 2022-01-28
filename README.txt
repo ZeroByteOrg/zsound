@@ -29,15 +29,17 @@ zsound.lib:
 		- support for FM and PSG music
 		- Variable playback speed
 		- Loop/repeat monitoring via callback
-		- Loop/repeat control routines
-		- Custom synchronization event channel support
+		- Loop/repeat behavior control routines
+		- Custom synchronization event channel support (untested)
 		- PCM track support is not yet available, but is planned
 		
 	- PCM player:
 		- Playback of any PCM quality, all the way up to 48Khz 16bit stereo
 		- Simple one-shot trigger API - pass pointer to digi parameter table
-		- more functionality is planned via granular control API and callbacks
-		  for behaviors such as looping digis or chaining clips together
+		- more functionality is planned...
+			-granular control API to set individual PCM parameters
+			-callbacks to allow creating behaviors such as looping
+			 digis or chaining clips together
 	
 	- ZFX player:
 		- Initial implementation. Allows simple one-shot triggering of sfx playback
@@ -60,8 +62,8 @@ Tools:
 		  * YM2203
 		  	- dual-chip VGM support
 		  	- integrated AY-3 PSG voices supported (see below)
-		  	- clock rate support is incomplete - has cmdline switches
-		  	  for trying one of two rate multipliers
+		  	- clock rate support is incomplete - has cmdline switch
+		  	  for trying one of two rate multipliers on FM voices
 		- PSG chips supported:
 		  * AY-3-8910 / YM2149
 		  	- noise output frequency is currently hard-wired to a constant value
@@ -74,7 +76,7 @@ Tools:
 		  	  have the ability to do periodic noise.
 		- Planned/most-wanted chips for future support:
 		  * Sega PCM (arcade) for supporting one digi channel from Deflemask arcade mode tunes
-		  * YM2612 DAC output
+		  * YM2612 DAC
 		  * NES APU
 		  * POKEY
 		  * OPL2 (AdLib/SoundBlaster)
