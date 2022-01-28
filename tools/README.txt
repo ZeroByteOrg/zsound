@@ -15,7 +15,7 @@ dmp2x16:
 	with or without the 2-byte PRG header. Use dmp2x16 -H for more
 	information on the output formats.
 
-	WIP: tool will soon support OPM instrument file format
+	WIP: tool will eventually support OPM instrument file format
 
 vgm2zsm:
 	Converts VGM files into ZSM music stream format. Supports YM2151,

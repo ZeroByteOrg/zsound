@@ -38,7 +38,7 @@ Implement used-channel mask in zsmplayer.
 (*DONE*)
 
 Implement SFX stream player routines to compliment the music routine.
-
+(*DONE*) (basic implementation only)
 
 Volume support:
 	- fadein/fadeout routines for music

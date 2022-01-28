@@ -26,19 +26,16 @@ IMPORT_TAGGED "playmusic"
 IMPORT_TAGGED "playmusic_IRQ"
 IMPORT_TAGGED "startmusic"
 IMPORT_TAGGED "stopmusic"
-IMPORT_TAGGED "setmusicspeed"
+IMPORT_TAGGED "set_music_speed"
 IMPORT_TAGGED "force_loop"
 IMPORT_TAGGED "set_loop"
 IMPORT_TAGGED "disable_loop"
 IMPORT_TAGGED "set_callback"
 IMPORT_TAGGED "clear_callback"
+IMPORT_TAGGED "get_music_speed"
 
 ; to-do: move patchym into a separate .inc file for API
 IMPORT_TAGGED "patchym"
-
-; helloworld was here as a simple way to test the multi-source-file
-; project behavior. Uncomment to include it, but it really isn't needed...
-; IMPORT_TAGGED "helloworld"
 
 
 ;---------------------------------------------------[CORE ROUTINES]----------
@@ -229,3 +226,12 @@ IMPORT_TAGGED "patchym"
 ; ---------------------------------------------------------------------------
 ; Disables the EOF notification callback 
 
+;..................
+; get_music_speed :
+; ===========================================================================
+; Arguments: none
+; Returns: .XY = song's play rate in Hz
+; Affects: none
+; ---------------------------------------------------------------------------
+; This function returns the default playback rate in Hz of the active song.
+; This is NOT the current playback speed, but the speed in the song's header.

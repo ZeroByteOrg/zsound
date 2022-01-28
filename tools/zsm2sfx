@@ -10,12 +10,19 @@
 /* This script is for use on ZSM streams in order to convert them into SFX-style
  * formatting instead of music-style formatting. SFX stream format is very bare-bones:
  * 
- * {reg} {val} {pause} {reg} {val} {pause} ...
+ * FM:  {reg} {val} {pause} {reg} {val} {pause} ...
+ * PSG: {reg+pause} {val} {reg+pause} {val} ...
  *
+ * For FM:
  * pause value of $00 = continue playing w/o delay (obviously) but pause bytes
  * 			are required, even if zero.
- *
  * pause value of $FF = end of data
+ *
+ * For PSG:
+ * The reg+pause byte is packed with bits 0-1 being the register offset
+ * (i.e. 0=freq_lo, 1=freq_hi, 2=volume, 3=waveform/pulsewidth)
+ * Bits 2-7 contain the pause value.
+ * Pause value of 63 (%1111 11xx) = EOF (the reg/val are ignored)
  *
  * The stream contains no header info or command frames for multiplexing FM and PSG
  * sound commands. This script assumes FM for the moment, but could easily encorporate
