@@ -1,27 +1,24 @@
-; Simple bare-bones ZSM music player program, with "performance" rasterbar.
+; Simple bare-bones PCM music player program, with "performance" rasterbar.
 ;
-; Plays either BGM38.ZSM or BGM39.ZSM depending on which rev it is built for.
-; If the tune ends, the player stops at the end, but does not return to BASIC.
-; If the tune loops, then the player loops indefinitely.
+; Plays TEST.ZCM once and then loops forever doing nothing.
 ;
 ; The program builds to version r39/real HW specifications by default.
 ; Use --asm-define REV=38 to build for r38 emulator specifications.
 ;
-; BGM38.ZSM is pitch-corrected for YM2151 clocked at 4MHz (r38)
-; BGM39.ZSM uses reference pitch values for ~3.5MHz YM2151 clock.
-; 			(Yamaha recommended value, used in r39+, Box16, and real X16 HW)
+; ZCM is basically just a raw PCM stream with a 'digitab' struct as the
+; header. (DIGITAB struct is defined in pcmplayer.inc)
 ;
-; NOTE: This program COULD just call stepmusic directly in the IRQ handler, as
-;		it does nothing in the main loop otherwise. However, as an example of using
-;		zsmplayer, it is best to go ahead and demonstrate how to properly call
-;		stepmusic from the main loop, as stepmusic clobbers VERA registers and
-;		is therefore unsafe to use during an IRQ.
+;.struct DIGITAB		; shown here for reference
+;	addr		.addr
+;	bank		.byte
+;	size		.word	; 24bit digi size (in bytes)
+;	sizehi		.byte	; ...
+;	cfg			.byte	; VERA_audio_ctrl value
+;	rate		.byte	; VERA_audio_rate
+;.endstruct
+;
 
-; Additional Note: For now, this program also plays a PCM digi clip "SHORYUKEN.PCM"
-; once during the playback at the expiration of a countdown. This is here mostly to
-; test in-context PCM playback functionality. This should be removed and used in
-; a seperate example program such as a basic sound board or something of that
-; nature since it unneccessarily complicates this program a bit. 
+; The program loads TEST.ZCM into Banked RAM at digi_bank:PCM_address
 
 ; x16.inc by SlithyMatt - slightly modified for multi-revision support
 .include "x16.inc"			; Import X16-related symbols
@@ -29,11 +26,8 @@
 
 IMPORT_TAGGED "helloworld"	; REALLY REALLY need to move this OUT of the player library - lol.
 
-shoryuken   = $A000			; alias for the "digitab" location (now loading from ZCM file)
-ZCM_loadto	= shoryuken + 3	; memory address where to load the ZCM
-PCM_address = shoryuken + 8	; memory address where PCM data begins
-PCM_bank 	= 2				; defines starting bank in HIRAM
-PCM_size	= 775221
+digi		= $A000			; load point for ZCM file
+digi_bank 	= 2				; defines starting bank in HIRAM
 
 BAR_VISIBLE_MODE	= $31
 BAR_HIDDEN_MODE		= $11
@@ -57,16 +51,6 @@ diginame_len = (* - diginame)
 ; PCM parameter table to pass to start_digi
 
 
-.if(0)
-shoryuken:
-	.word	PCM_address	; RAM address of the PCM data
-	.byte 	PCM_bank	; 1st BANK for PCM data
-	.byte	<(PCM_size)	; size of digi (in bytes)
-	.byte	>(PCM_size)
-	.byte	^(PCM_size)
-	.byte	$0f			; mono 8bit
-	.byte	(8000/(25000000>>16))+1	; 8khz sample rate
-.endif
 	
 ; -----------------------------------------------------------------
 
@@ -108,12 +92,11 @@ main:		wai					; save power :)
 			jsr play_pcm
 			lda	#BAR_HIDDEN_MODE
 			sta	VERA_dc_video	; hide L1 to end the "rasterbar"
-			; do a countdown and play "shoryuken" sound when it reaches zero.
 			bra main
 			
 trigger:
-			ldx #<shoryuken		; load address of PCM parameter table "shoryuken"
-			ldy #>shoryuken		; into .XY
+			ldx #<digi		; load address of PCM parameter table "digi"
+			ldy #>digi		; into .XY
 			lda #2				; A = memory bank where table is stored.
 			jsr start_digi		; (in this case, main memory, so A doesn't matter)
 			jsr play_pcm
@@ -220,7 +203,7 @@ start:
 			lda #'a'
 			jsr CHROUT
 			; set BANKRAM to the first bank where digi should load
-			lda	#PCM_bank
+			lda	#digi_bank
 			sta	RAM_BANK
 			; prepare for call to SETNAM Kernal routine
 			lda #diginame_len
@@ -234,18 +217,21 @@ start:
 			jsr	SETLFS
 			; load digi sound data
 			lda	#0		; 0=load, 1=verify, 2|3 = VLOAD to VRAM bank0/bank1
-			ldx	#<(ZCM_loadto)
-			ldy #>(ZCM_loadto)
+			ldx	#<digi
+			ldy #>digi
 			jsr LOAD
+			
 			lda #'a'
 			jsr CHROUT
-			lda #PCM_bank
+
+			; write the PCM data pointer into the digitab
+			lda #digi_bank
 			sta RAM_BANK
-			sta shoryuken + 2
-			lda #<PCM_address
-			sta shoryuken
-			lda #>PCM_address
-			sta shoryuken+1
+			sta digi + DIGITAB::bank
+			lda #<(digi + .sizeof(DIGITAB))
+			sta digi + DIGITAB::addr
+			lda #>(digi + .sizeof(DIGITAB))
+			sta digi + DIGITAB::addr+1
 
 			;  ==== Install IRQ handler to process music once per frame ====
 			;

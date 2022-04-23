@@ -62,7 +62,7 @@ diginame_len = (* - diginame)
 
 .segment "DATA"
 ; PCM parameter table to pass to start_digi
-.if 0
+.if 1
 shoryuken:
 	.word	0			; replaced with PCM_address at runtime
 	.byte 	0			; replaced with PCM_bank at runtime

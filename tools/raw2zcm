@@ -1,6 +1,35 @@
 #!/usr/bin/php
 <?php
 
+/* raw2zsm is a tool for applying a ZCM header to the beginning of a
+ * raw PCM file so programs don't need to be pre-configured with the
+ * settings for every digi they load and play. The library can still
+ * play RAW pcm just fine (it doesn't know the difference or care),
+ * but the program will need to know the PCM parameters from some other
+ * source, be it hard-coded tables in source, or a separate loadable
+ * parameters table, etc.
+ * 
+ * Currently, it also prepends a 2-byte PRG header of 'zp' but with
+ * the X16 Kernal now being able to load 'headerless' files, I am
+ * likely to remove all PRG headers from the file specifications
+ * related to Zsound. Until that time, the tool places one.
+ * 
+ * The header format is identical to the DIGITAB data structure
+ * used to trigger digi playback in Zsound with "start_digi"
+ * 
+ * See format spec / pcmplayer.ini for more details
+ * 
+ * Usage:
+ * 
+ * raw2zsm [-q] [-s] rate infile [outfile]
+ * 
+ * -q = 16-bit sample -Q-uality  (defaults to 8bit if -q not specified)
+ * -s = -S-tereo                 (defaults to mono if -s not specified)
+ * 
+ * outfile = TEST.ZCM if no output file is specified.
+ * 
+*/ 
+
 // Detect if running under Windows
 define ("WINDOWS", strpos(strtoupper(PHP_OS),'WIN')!==false);
 
@@ -14,12 +43,15 @@ $ERR=parse_cmdline_args()!=0;
 
 /*
  * Header format from zsound pcmplayer.asm:
- * size		.word	; 24bit digi size
+ * addr     .word   ; memory location of PCM stream data
+ * bank     .byte   ; HiRAM bank # of PCM stream data
+ * size		.word	; 24bit digi size (bytes, excluding header)
  * sizehi	.byte	; ...
  * cfg		.byte	; VERA_audio_ctrl value
  * rate		.byte	; VERA_audio_rate
 */
-$hdr  = array_fill(0,5,0);
+
+$hdr  = array_fill(0,8,0);
 $cfg  = BITRATE | STEREO | 0x0f; // 0x0f = max volume
 $rate = (SAMPLERATE/(25000000>>16))+1;
 $size = filesize(INFILENAME);
@@ -28,11 +60,11 @@ if(($rate > 0xFF)||($rate < 1)) {
 	print "ERROR: Sample rate must be 1 .. 48828\n\n";
 	exit(1);
 }
-$hdr[0]=$size & 0xff;
-$hdr[1]=($size >> 8) & 0xff;
-$hdr[2]=($size >> 16) & 0xff;
-$hdr[3]=$cfg;
-$hdr[4]=$rate;
+$hdr[3]=$size & 0xff;
+$hdr[4]=($size >> 8) & 0xff;
+$hdr[5]=($size >> 16) & 0xff;
+$hdr[6]=$cfg;
+$hdr[7]=$rate;
 
 $f = fopen(INFILENAME, "r");
 if (! $f) {
