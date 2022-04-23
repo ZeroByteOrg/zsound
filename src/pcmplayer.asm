@@ -5,6 +5,7 @@ EXPORT_TAGGED "init_pcm"
 EXPORT_TAGGED "start_digi"
 EXPORT_TAGGED "play_pcm"
 EXPORT_TAGGED "stop_pcm"
+EXPORT_TAGGED "set_pcm_volume"
 
 ; bare minimum info needed in a data file: VERA_CTRL, RATE, length
 ; digi parameter table also needs to store the location of the data
@@ -44,7 +45,9 @@ frac_bytes		:= digi + PCMSTATE::fracbytes
 ;---------------------------------------------------------------
 .segment "CODE"
 .proc init_pcm: near
-	jmp stop_pcm
+	jsr stop_pcm
+	lda #$0f	; init PCM paramaters to 8bit mono, max volume
+	sta VERA_audio_ctrl
 	; TODO: at some point I plan to have hooks in ZSM player
 	; for using PCM, and this routine should setup the hooks
 	; appropriately, as I'm thinking "jump table" to be the
@@ -85,11 +88,17 @@ loop:
 	bpl loop
 	
 	lda digi + PCMSTATE::digi + DIGITAB::cfg
-	ora #$80	; clear the FIFO when setting the PCM parameters.
+	and #$30
+	sta digi + PCMSTATE::digi + DIGITAB::cfg
+	lda VERA_audio_ctrl
+	and #$0f	; get current volume level
+	ora #$80	; set the clear_FIFO bit when setting the PCM parameters.
+	ora digi + PCMSTATE::digi + DIGITAB::cfg
+	sta VERA_audio_ctrl
 		; TODO: Make the playback engine work in a way that doesn't require
 		; clearing the buffer, yet is able to change parameters at the correct
 		; time when the previous sound finishes draining. Challenge accepted!
-	sta VERA_audio_ctrl
+
 	; pre-load the FIFO
 	ldx digi + PCMSTATE::digi + DIGITAB::rate
 	jsr set_byte_rate
@@ -421,12 +430,29 @@ do_bankwrap:
 ;---------------------------------------------------------------
 .segment "CODE"
 .proc stop_pcm: near
+	; stop playback
 	stz VERA_audio_rate
+	; flush fifo
 	lda #$80
-	sta VERA_audio_ctrl
+	ora VERA_audio_ctrl
 	stz active_digi
 	rts
 .endproc
+
+;.................
+; set_pcm_volume :
+;=====================================================
+.segment "CODE"
+.proc set_pcm_volume: near
+	and #$0F	; mask off the non-volume-control bits
+	sta zp_tmp
+	lda VERA_audio_ctrl
+	and #$30	; keep only the format control bits
+	ora zp_tmp
+	sta VERA_audio_ctrl
+	rts
+.endproc
+;---------------------------------------------------------------
 
 ; LUT for bytes-per-frame at all possible play rates 1..128
 ; (loader does dex once before using as index, since 0 = not playing)

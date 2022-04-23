@@ -103,7 +103,7 @@ trigger:
 			jsr play_pcm
 			jsr play_pcm
 			jsr play_pcm
-			bra	main
+			rts
 			
 ; -----------------------------------------------------------------
 

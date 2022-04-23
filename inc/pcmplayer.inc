@@ -40,6 +40,7 @@ IMPORT_TAGGED "init_pcm"
 IMPORT_TAGGED "start_digi"
 IMPORT_TAGGED "play_pcm"
 IMPORT_TAGGED "stop_pcm"
+IMPORT_TAGGED "set_pcm_volume"
 
 .endif
 
@@ -54,6 +55,7 @@ IMPORT_TAGGED "stop_pcm"
 ;
 ; Initializes the memory locations used by PCMM player to a stopped playback
 ; state, sets VERA playback rate to 0 (disabled) and clears the PCM FIFO
+; also sets the volume to 15 (F).
 
 
 ;...........
@@ -112,3 +114,13 @@ IMPORT_TAGGED "stop_pcm"
 ; In the future, more granular controls are planned, but the exact
 ; nature and functionality are as yet to be determined.
 
+;.................
+; set_pcm_volume :
+; ===========================================================================
+; Arguments: Pointer to digi parameter table in memory.
+;	.A  = new volume level (only the 4 LSB are used)
+;
+; Returns: none
+; Affects: none
+; ---------------------------------------------------------------------------
+; Sets the PCM volume level 0..F
