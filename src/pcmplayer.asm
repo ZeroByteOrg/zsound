@@ -22,9 +22,8 @@ DIGITAB_LAST		= DIGITAB::rate
 .struct PCMSTATE
 	state		.byte
 	digi		.tag	DIGITAB
-	byterate_f	.byte	; 16.8 fixedpoint "bytes per frame" rate 
 	byterate	.word	; (computed whenever playback rate is set)
-	fracbytes	.byte	; fractional bytes transferred counter
+	halfrate	.word	; Speed to use when AFLOW is clear
 .endstruct
 
 
@@ -39,7 +38,6 @@ zp_tmp2:		.res 2
 digi:			.tag PCMSTATE
 
 active_digi		:= digi + PCMSTATE::state
-frac_bytes		:= digi + PCMSTATE::fracbytes
 
 
 ;---------------------------------------------------------------
@@ -103,7 +101,7 @@ loop:
 	ldx digi + PCMSTATE::digi + DIGITAB::rate
 	jsr set_byte_rate
 	dec active_digi
-	stz frac_bytes
+;	stz frac_bytes
 	jsr play_pcm	; prime the FIFO with at least 1 frame's worth of data.
 	
 	; enable VERA PCM playback
@@ -121,28 +119,43 @@ exit:
 ; .X = VERA_audio_rate setting
 .segment "CODE"
 .proc set_byte_rate: near
+
+	fullrate = digi + PCMSTATE::byterate
+	halfrate = digi + PCMSTATE::halfrate
+
 	dex
 	bmi bad_rate
-	ldy pcmrate_fr,x
-	sty digi + PCMSTATE::byterate_f
-	ldy pcmrate_lo,x
-	sty digi + PCMSTATE::byterate
-	ldy pcmrate_hi,x
-	sty digi + PCMSTATE::byterate+1
-	inx
+	ldy pcmrate,x	; get rate from LUT
+	stz fullrate+1
+	
+	; See if value needs to be div by 2 or 4 due to PCM formatting:
+	; LUT = 16bit stereo rate. /2 if mono and /2 if 8bit.
+	; Value needs to <<4 if unaltered, less if one or more /2s 
+	ldx #($100-3)
 check_16bit:
 	bit #$10 ; check the 16bit format flag
-	beq check_stereo
-	asl digi+PCMSTATE::byterate_f
-	rol digi+PCMSTATE::byterate
-	rol digi+PCMSTATE::byterate+1
+	bne check_stereo
+	inx
 check_stereo:
 	bit #$20 ; check stereo flag
-	beq done
-	asl digi+PCMSTATE::byterate_f
-	rol digi+PCMSTATE::byterate
-	rol digi+PCMSTATE::byterate+1
-done:
+	bne set_speeds
+	inx
+
+	; shift up to 4 MSB of pcmrate into hi byte of fullrate
+set_speeds:
+	tya		; .A = rate value from LUT (will become low-byte)
+loop:
+	asl
+	rol	fullrate+1
+	inx
+	bmi loop	; do n-1 shifts in the loop.
+	; Save as halfrate before final shift.
+	sta halfrate
+	ldx fullrate+1
+	stx halfrate+1
+	asl
+	sta fullrate
+	rol fullrate+1
 	clc
 	rts
 bad_rate:
@@ -150,6 +163,7 @@ bad_rate:
 .endproc
 
 
+.if(0)
 ;---------------------------------------------------------------
 .segment "CODE"
 .proc play_pcm: near
@@ -166,14 +180,6 @@ bad_rate:
 noop:
 	rts
 
-	; precalculate the fractional frame accumulation, store in pcm_pages as tmp.
-:	clc
-	stz pcm_pages
-	lda frac_bytes
-	adc fracframe
-	sta frac_bytes
-	bcc :+
-	inc pcm_pages
 :
 	; totalbytes -= bytesperframe + pcm_pages
 	sec
@@ -209,77 +215,71 @@ last_frame:
 	stz active_digi
 	jmp load_fifo
 .endproc
-
-
-.if 0
-;---------------------------------------------------------------
-; load_fifo: (older version here for reference / resurrection)
-; assumes pcm_ptr:pcm_bank point at the current byte of the sample stream
-; and that the current bank is not necessarily the one with the data.
-; assumes FIFO overflow is impossible, as this implementation attempts to
-; keep just 1 frame's worth of samples in the FIFO, max. Assumes 
-;
-; Arguments:
-; .X = low byte of transfer amount
-; ZP var pcm_pages = hi byte of transfer amount
-;---------------------------------------------------------------
-.segment "CODE"
-.proc load_fifo1: near
-
-	pcm_ptr  = digi + PCMSTATE::digi + DIGITAB::addr
-	pcm_bank = digi + PCMSTATE::digi + DIGITAB::bank
-
-	; self-mod the page of the LDA below to the current page of pcm_ptr
-	ldy pcm_ptr+1
-	sty data_page
-	ldy pcm_ptr			; .Y = low byte of pcm_ptr
-	; swap in the current RAM bank of the sample stream
-	lda RAM_BANK
-	sta BANK_SAVE
-	lda pcm_bank		; (formerly) ZP
-	sta RAM_BANK
-	jmp check_done
-
-page_wrap:
-	; advance pointer to the next page. Do bank wrap if necessary
-	lda data_page
-	inc
-	sta data_page
-	cmp #$c0
-	bne check_done
-	lda #$a0
-	inc RAM_BANK
-	inc pcm_bank		; (formerly) ZP
-	sta data_page
-	bra copy_byte
-
-loop2:
-	dec
-	sta pcm_pages		; ZP
-loop1:
-	dex
-copy_byte:
-	lda $FF00,y
-	data_page = (*-1)
-	sta VERA_audio_data
-	iny
-	beq page_wrap
-check_done:
-	cpx #0
-	bne loop1
-	lda pcm_pages		; ZP
-	bne loop2
-finished:
-	;update the data pointer.
-	sty pcm_ptr			; (formerly) ZP
-	ldy data_page		; self-mod
-	sty pcm_ptr+1		; (formerly) ZP
-	lda #$FF
-	BANK_SAVE = (*-1)
-	sta RAM_BANK
-	rts
-.endproc
+;================================================[ play_pcm ]=====^
 .endif
+
+;............
+; play_pcm2 :
+;=====================================================
+.segment "CODE"
+.proc play_pcm
+
+	bytesleft	= digi + PCMSTATE::digi + DIGITAB::size
+	fullrate 	= digi + PCMSTATE::byterate
+	halfrate	= digi + PCMSTATE::halfrate
+	thisrate    = zp_tmp
+
+	lda	active_digi		; quick check whether digi player is active
+	
+	beq noop
+	bmi :+
+	dec active_digi
+noop:
+	rts
+
+:	clc
+	lda #$08
+	and VERA_isr	; check AFLOW
+	bne aflow_set
+	; choose halfrate
+	bra min
+	lda halfrate+1
+	sta thisrate+1
+	lda halfrate
+	sta thisrate
+aflow_set:
+	; choose fullrate
+	lda fullrate+1
+	sta thisrate+1
+	lda fullrate
+	sta thisrate
+min:
+	lda bytesleft
+	sec
+	sbc thisrate
+	tax
+	lda bytesleft+1
+	sbc thisrate+1
+	tay
+	lda bytesleft+2
+	sbc #0
+	bmi	last_frame ; use bytesleft instead
+	; update bytesleft with the new remaining amount after this load.
+	sta bytesleft+2
+	sty bytesleft+1
+	stx bytesleft
+	ldx thisrate
+	ldy thisrate+1
+	jmp load_fifo
+last_frame:
+	ldx bytesleft
+	ldy bytesleft+1
+	stz bytesleft
+	stz bytesleft+1
+	stz active_digi ; <-- wanna get this concept working....
+	jmp load_fifo	
+.endproc
+;================================================[ play_pcm2 ]=====^
 
 ;............
 ; load_fifo :
@@ -463,6 +463,31 @@ do_bankwrap:
 ; hmmm, that would have to be generated at run-time....
 
 .segment "RODATA"
+
+pcmrate:
+	.byte $03,$04,$06,$07,$09,$0b,$0c,$0e,$0f,$11,$13,$14,$16,$18,$19,$1b
+	.byte $1c,$1e,$20,$21,$23,$24,$26,$28,$29,$2b,$2c,$2e,$30,$31,$33,$34
+	.byte $36,$38,$39,$3b,$3c,$3e,$40,$41,$43,$44,$46,$48,$49,$4b,$4c,$4e
+	.byte $50,$51,$53,$55,$56,$58,$59,$5b,$5d,$5e,$60,$61,$63,$65,$66,$68
+	.byte $69,$6b,$6d,$6e,$70,$71,$73,$75,$76,$78,$79,$7b,$7d,$7e,$80,$81
+	.byte $83,$85,$86,$88,$89,$8b,$8d,$8e,$90,$91,$93,$95,$96,$98,$99,$9b
+	.byte $9d,$9e,$a0,$a2,$a3,$a5,$a6,$a8,$aa,$ab,$ad,$ae,$b0,$b2,$b3,$b5
+	.byte $b6,$b8,$ba,$bb,$bd,$be,$c0,$c2,$c3,$c5,$c6,$c8,$ca,$cb,$cd,$cf
+
+.if(0)
+pcmrate: ; packed as rate>>4 for 16bit stereo rates. adjust accordingly.
+	.byte $03,$04,$06,$08,$09,$0b,$0d,$0e,$10,$12,$13,$15,$17,$18,$1a,$1c
+	.byte $1d,$1f,$21,$22,$24,$26,$27,$29,$2b,$2c,$2e,$30,$31,$33,$35,$36
+	.byte $38,$3a,$3b,$3d,$3f,$40,$42,$44,$45,$47,$49,$4a,$4c,$4e,$50,$51
+	.byte $53,$55,$56,$58,$5a,$5b,$5d,$5f,$60,$62,$64,$65,$67,$69,$6a,$6c
+	.byte $6e,$6f,$71,$73,$74,$76,$78,$7a,$7b,$7d,$7f,$80,$82,$84,$85,$87
+	.byte $89,$8a,$8c,$8e,$8f,$91,$93,$94,$96,$98,$99,$9b,$9d,$9e,$a0,$a2
+	.byte $a3,$a5,$a7,$a8,$aa,$ac,$ad,$af,$b1,$b2,$b4,$b6,$b7,$b9,$bb,$bc
+	.byte $be,$c0,$c1,$c3,$c5,$c6,$c8,$ca,$cb,$cd,$cf,$d0,$d2,$d4,$d5,$d7
+.endif
+
+.if(0)
+
 pcmrate_fr: ; fraction per frame
 	.byte $5C,$B7,$13,$6E,$CA,$26,$81,$DD,$38,$94,$F0,$4B,$A7,$02,$5E
 	.byte $BA,$15,$71,$CC,$28,$84,$DF,$3B,$97,$F2,$4E,$A9,$05,$61,$BC
@@ -495,6 +520,7 @@ pcmrate_hi:
 	.byte $02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02
 	.byte $02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02
 	.byte $03,$03,$03,$03,$03,$03,$03,$03
+.endif
 
 canary:
 	.byte	"pcm player included"	; looking for this in the PRG for

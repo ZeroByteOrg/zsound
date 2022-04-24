@@ -83,7 +83,7 @@ line_irq:
 
 .segment	"CODE"
 
-main:		wai					; save power :)
+main:		;wai					; save power :)
 			lda	semaphore
 			bne	main			; raster IRQ sets semaphore = 0. Wait for that to happen
 			lda	#BAR_VISIBLE_MODE
@@ -99,10 +99,10 @@ trigger:
 			ldy #>digi		; into .XY
 			lda #2				; A = memory bank where table is stored.
 			jsr start_digi		; (in this case, main memory, so A doesn't matter)
-			jsr play_pcm
-			jsr play_pcm
-			jsr play_pcm
-			jsr play_pcm
+;			jsr play_pcm
+;			jsr play_pcm
+;			jsr play_pcm
+;			jsr play_pcm
 			rts
 			
 ; -----------------------------------------------------------------
