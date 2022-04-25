@@ -464,6 +464,12 @@ do_bankwrap:
 
 .segment "RODATA"
 
+;candidate formulae:
+; fast:
+;ceil (2^(m-1-c) * ( (floor(vera_rate)/128)*48828.125 ) / 60 ) {c = correction factor like 0.05}
+; slow:
+;floor(2^(m-1+c) * ( (floor(vera_rate)/128)*48828.125 ) / 60 ) {c = correction factor like 0.05}
+
 pcmrate:
 	.byte $03,$04,$06,$07,$09,$0b,$0c,$0e,$0f,$11,$13,$14,$16,$18,$19,$1b
 	.byte $1c,$1e,$20,$21,$23,$24,$26,$28,$29,$2b,$2c,$2e,$30,$31,$33,$34
