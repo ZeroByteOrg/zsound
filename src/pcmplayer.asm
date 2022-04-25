@@ -117,45 +117,54 @@ exit:
 ;---------------------------------------------------------------
 ; .A = VERA_audio_ctrl
 ; .X = VERA_audio_rate setting
+; AFFECTS Y
 .segment "CODE"
 .proc set_byte_rate: near
 
 	fullrate = digi + PCMSTATE::byterate
 	halfrate = digi + PCMSTATE::halfrate
+	tmp_lo   = zp_tmp
+	tmp_hi   = zp_tmp+1
 
 	dex
 	bmi bad_rate
-	ldy pcmrate,x	; get rate from LUT
+	; get rates from LUT
+	ldy pcmrate_fast,x
+	sty tmp_hi
+	ldy pcmrate_slow,x
+	sty tmp_lo
+	
+	stz halfrate+1
 	stz fullrate+1
 	
 	; See if value needs to be div by 2 or 4 due to PCM formatting:
 	; LUT = 16bit stereo rate. /2 if mono and /2 if 8bit.
 	; Value needs to <<4 if unaltered, less if one or more /2s 
-	ldx #($100-3)
+	ldx #2
 check_16bit:
-	bit #$10 ; check the 16bit format flag
-	bne check_stereo
+	bit #$10 ; check the 16bit format flag in .A
+	beq check_stereo
 	inx
 check_stereo:
-	bit #$20 ; check stereo flag
-	bne set_speeds
+	bit #$20 ; check stereo flag in .A
+	beq loop
 	inx
 
-	; shift up to 4 MSB of pcmrate into hi byte of fullrate
-set_speeds:
-	tya		; .A = rate value from LUT (will become low-byte)
+	; shift up to 4 MSB of fast/slow rates into high bytes
+	; of fullrate/halfrate
 loop:
-	asl
+	asl tmp_hi
 	rol	fullrate+1
-	inx
-	bmi loop	; do n-1 shifts in the loop.
-	; Save as halfrate before final shift.
-	sta halfrate
-	ldx fullrate+1
-	stx halfrate+1
-	asl
+	asl tmp_lo
+	rol halfrate+1
+	dex
+	bne loop
+
+	lda tmp_hi
 	sta fullrate
-	rol fullrate+1
+	lda tmp_lo
+	sta halfrate
+
 	clc
 	rts
 bad_rate:
@@ -163,63 +172,8 @@ bad_rate:
 .endproc
 
 
-.if(0)
-;---------------------------------------------------------------
-.segment "CODE"
-.proc play_pcm: near
-
-	totalbytes		= digi + PCMSTATE::digi + DIGITAB::size
-	bytesperframe 	= digi + PCMSTATE::byterate
-	fracframe		= digi + PCMSTATE::byterate_f
-
-	lda	active_digi		; quick check whether digi player is active
-	
-	beq noop
-	bmi :+
-	dec active_digi
-noop:
-	rts
-
-:
-	; totalbytes -= bytesperframe + pcm_pages
-	sec
-	lda totalbytes
-	sbc pcm_pages
-	sbc bytesperframe
-	tax
-	lda totalbytes+1
-	sbc bytesperframe+1
-	tay
-	lda totalbytes+2
-	sbc #0
-	bmi	last_frame
-	; update totalbytes with the new remaining amount after this load.
-	sta totalbytes+2
-	sty totalbytes+1
-	stx totalbytes
-	; load .XY with totalbytes + fractional frame
-	clc
-	lda pcm_pages
-	adc bytesperframe
-	tax
-	lda bytesperframe+1
-	adc #0
-	tay
-	jmp load_fifo
-last_frame:
-	ldx totalbytes
-	ldy totalbytes+1
-	stz totalbytes
-	stz totalbytes+1
-	stz frac_bytes
-	stz active_digi
-	jmp load_fifo
-.endproc
-;================================================[ play_pcm ]=====^
-.endif
-
-;............
-; play_pcm2 :
+;...........
+; play_pcm :
 ;=====================================================
 .segment "CODE"
 .proc play_pcm
@@ -279,7 +233,7 @@ last_frame:
 	stz active_digi ; <-- wanna get this concept working....
 	jmp load_fifo	
 .endproc
-;================================================[ play_pcm2 ]=====^
+;================================================[ play_pcm ]=====^
 
 ;............
 ; load_fifo :
@@ -426,8 +380,11 @@ do_bankwrap:
 	bra no_bankwrap
 	
 .endproc
+;===============================================[ load_fifo ]=====^
 
-;---------------------------------------------------------------
+;...........
+; stop_pcm :
+;=====================================================
 .segment "CODE"
 .proc stop_pcm: near
 	; stop playback
@@ -480,53 +437,27 @@ pcmrate:
 	.byte $9d,$9e,$a0,$a2,$a3,$a5,$a6,$a8,$aa,$ab,$ad,$ae,$b0,$b2,$b3,$b5
 	.byte $b6,$b8,$ba,$bb,$bd,$be,$c0,$c2,$c3,$c5,$c6,$c8,$ca,$cb,$cd,$cf
 
-.if(0)
-pcmrate: ; packed as rate>>4 for 16bit stereo rates. adjust accordingly.
-	.byte $03,$04,$06,$08,$09,$0b,$0d,$0e,$10,$12,$13,$15,$17,$18,$1a,$1c
-	.byte $1d,$1f,$21,$22,$24,$26,$27,$29,$2b,$2c,$2e,$30,$31,$33,$35,$36
-	.byte $38,$3a,$3b,$3d,$3f,$40,$42,$44,$45,$47,$49,$4a,$4c,$4e,$50,$51
-	.byte $53,$55,$56,$58,$5a,$5b,$5d,$5f,$60,$62,$64,$65,$67,$69,$6a,$6c
-	.byte $6e,$6f,$71,$73,$74,$76,$78,$7a,$7b,$7d,$7f,$80,$82,$84,$85,$87
-	.byte $89,$8a,$8c,$8e,$8f,$91,$93,$94,$96,$98,$99,$9b,$9d,$9e,$a0,$a2
-	.byte $a3,$a5,$a7,$a8,$aa,$ac,$ad,$af,$b1,$b2,$b4,$b6,$b7,$b9,$bb,$bc
-	.byte $be,$c0,$c1,$c3,$c5,$c6,$c8,$ca,$cb,$cd,$cf,$d0,$d2,$d4,$d5,$d7
-.endif
+pcmrate_fast: ; <<4 for 16+stereo, <<3 for 16|stereo, <<2 for 8+mono
+	.byte $03,$04,$06,$07,$09,$0B,$0C,$0E,$10,$11,$13,$15,$16,$17,$19,$1A
+	.byte $1C,$1E,$1F,$21,$22,$24,$26,$27,$29,$2A,$2C,$2E,$2F,$31,$33,$34
+	.byte $36,$37,$39,$3B,$3C,$3E,$3F,$41,$43,$44,$46,$47,$49,$4B,$4C,$4E
+	.byte $50,$51,$53,$54,$56,$58,$59,$5B,$5C,$5E,$60,$61,$63,$65,$66,$68
+	.byte $69,$6B,$6D,$6E,$70,$71,$73,$75,$76,$78,$79,$7B,$7D,$7E,$80,$82
+	.byte $83,$85,$86,$88,$8A,$8B,$8D,$8E,$90,$92,$93,$95,$97,$98,$9A,$9B
+	.byte $9D,$9F,$A0,$A2,$A3,$A5,$A7,$A8,$AA,$AC,$AD,$AF,$B0,$B2,$B4,$B5
+	.byte $B7,$B8,$BA,$BC,$BD,$BF,$C0,$C2,$C4,$C5,$C7,$C9,$CA,$CC,$CD,$CF
 
-.if(0)
+pcmrate_slow:
+	.byte $01,$02,$04,$05,$07,$09,$0A,$0C,$0E,$0F,$11,$12,$14,$16,$17,$19
+	.byte $1A,$1C,$1E,$1F,$21,$22,$24,$26,$27,$29,$2A,$2C,$2E,$2F,$31,$32
+	.byte $34,$36,$37,$39,$3A,$3C,$3D,$3F,$41,$42,$44,$45,$47,$49,$4A,$4C
+	.byte $4D,$4F,$51,$52,$54,$55,$57,$58,$5A,$5C,$5D,$5F,$60,$62,$64,$65
+	.byte $67,$68,$6A,$6C,$6D,$6F,$70,$72,$74,$75,$77,$78,$7A,$7B,$7D,$7F
+	.byte $80,$82,$83,$85,$87,$88,$8A,$8B,$8D,$8F,$90,$92,$93,$95,$96,$98
+	.byte $9A,$9B,$9D,$9E,$A0,$A2,$A3,$A5,$A6,$A8,$AA,$AB,$AD,$AE,$B0,$B1
+	.byte $B3,$B5,$B6,$B8,$BA,$BC,$BE,$BF,$C1,$C2,$C4,$C6,$C7,$C9,$CA,$CC
 
-pcmrate_fr: ; fraction per frame
-	.byte $5C,$B7,$13,$6E,$CA,$26,$81,$DD,$38,$94,$F0,$4B,$A7,$02,$5E
-	.byte $BA,$15,$71,$CC,$28,$84,$DF,$3B,$97,$F2,$4E,$A9,$05,$61,$BC
-	.byte $18,$73,$CF,$2B,$86,$E2,$3D,$99,$F5,$50,$AC,$07,$63,$BF,$1A
-	.byte $76,$D1,$2D,$89,$E4,$40,$9B,$F7,$53,$AE,$0A,$65,$C1,$1D,$78
-	.byte $D4,$2F,$8B,$E7,$42,$9E,$F9,$55,$B1,$0C,$68,$C4,$1F,$7B,$D6
-	.byte $32,$8E,$E9,$45,$A0,$FC,$58,$B3,$0F,$6A,$C6,$22,$7D,$D9,$34
-	.byte $90,$EC,$47,$A3,$FE,$5A,$B6,$11,$6D,$C8,$24,$80,$DB,$37,$92
-	.byte $EE,$4A,$A5,$01,$5C,$B8,$14,$6F,$CB,$26,$82,$DE,$39,$95,$F1
-	.byte $4C,$A8,$03,$5F,$BB,$16,$72,$CD
 
-pcmrate_lo:
-	.byte $06,$0C,$13,$19,$1F,$26,$2C,$32,$39,$3F,$45,$4C,$52,$59,$5F
-	.byte $65,$6C,$72,$78,$7F,$85,$8B,$92,$98,$9E,$A5,$AB,$B2,$B8,$BE
-	.byte $C5,$CB,$D1,$D8,$DE,$E4,$EB,$F1,$F7,$FE,$04,$0B,$11,$17,$1E
-	.byte $24,$2A,$31,$37,$3D,$44,$4A,$50,$57,$5D,$64,$6A,$70,$77,$7D
-	.byte $83,$8A,$90,$96,$9D,$A3,$A9,$B0,$B6,$BD,$C3,$C9,$D0,$D6,$DC
-	.byte $E3,$E9,$EF,$F6,$FC,$02,$09,$0F,$16,$1C,$22,$29,$2F,$35,$3C
-	.byte $42,$48,$4F,$55,$5B,$62,$68,$6F,$75,$7B,$82,$88,$8E,$95,$9B
-	.byte $A1,$A8,$AE,$B5,$BB,$C1,$C8,$CE,$D4,$DB,$E1,$E7,$EE,$F4,$FA
-	.byte $01,$07,$0E,$14,$1A,$21,$27,$2D
-
-pcmrate_hi:
-	.byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	.byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	.byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$01,$01,$01,$01,$01
-	.byte $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
-	.byte $01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01,$01
-	.byte $01,$01,$01,$01,$01,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02
-	.byte $02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02
-	.byte $02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02
-	.byte $03,$03,$03,$03,$03,$03,$03,$03
-.endif
 
 canary:
 	.byte	"pcm player included"	; looking for this in the PRG for
