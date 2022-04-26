@@ -101,13 +101,8 @@ loop:
 	ldx digi + PCMSTATE::digi + DIGITAB::rate
 	jsr set_byte_rate
 	dec active_digi
-;	stz frac_bytes
-	jsr play_pcm	; prime the FIFO with at least 1 frame's worth of data.
-	
-	; enable VERA PCM playback
-	ldx digi + PCMSTATE::digi + DIGITAB::rate
-	stx VERA_audio_rate
-exit:
+	dec active_digi	; signal play_pcm to set VERA playback rate after the load
+
 	lda #$FF
 	BANK_SAVE := (*-1)
 	sta RAM_BANK
@@ -182,6 +177,7 @@ bad_rate:
 	fullrate 	= digi + PCMSTATE::byterate
 	halfrate	= digi + PCMSTATE::halfrate
 	thisrate    = zp_tmp
+	nextstate	= zp_tmp2
 
 	lda	active_digi		; quick check whether digi player is active
 	
@@ -224,14 +220,27 @@ min:
 	stx bytesleft
 	ldx thisrate
 	ldy thisrate+1
-	jmp load_fifo
+	jmp go
 last_frame:
 	ldx bytesleft
 	ldy bytesleft+1
 	stz bytesleft
 	stz bytesleft+1
-	stz active_digi ; <-- wanna get this concept working....
-	jmp load_fifo	
+	stz active_digi
+go:
+	jsr load_fifo
+	lda active_digi
+	beq done
+	cmp #($100-2) ; why doesn't ca65 let me use #-2 ??
+	bne done
+activate_playback:
+	inc
+	sta active_digi
+	ldx digi + PCMSTATE::digi + DIGITAB::rate
+	stx VERA_audio_rate
+done:
+	rts
+	
 .endproc
 ;================================================[ play_pcm ]=====^
 
@@ -427,6 +436,7 @@ do_bankwrap:
 ; slow:
 ;floor(2^(m-1+c) * ( (floor(vera_rate)/128)*48828.125 ) / 60 ) {c = correction factor like 0.05}
 
+.if(0)
 pcmrate:
 	.byte $03,$04,$06,$07,$09,$0b,$0c,$0e,$0f,$11,$13,$14,$16,$18,$19,$1b
 	.byte $1c,$1e,$20,$21,$23,$24,$26,$28,$29,$2b,$2c,$2e,$30,$31,$33,$34
@@ -436,6 +446,7 @@ pcmrate:
 	.byte $83,$85,$86,$88,$89,$8b,$8d,$8e,$90,$91,$93,$95,$96,$98,$99,$9b
 	.byte $9d,$9e,$a0,$a2,$a3,$a5,$a6,$a8,$aa,$ab,$ad,$ae,$b0,$b2,$b3,$b5
 	.byte $b6,$b8,$ba,$bb,$bd,$be,$c0,$c2,$c3,$c5,$c6,$c8,$ca,$cb,$cd,$cf
+.endif
 
 pcmrate_fast: ; <<4 for 16+stereo, <<3 for 16|stereo, <<2 for 8+mono
 	.byte $03,$04,$06,$07,$09,$0B,$0C,$0E,$10,$11,$13,$15,$16,$17,$19,$1A
