@@ -2,6 +2,7 @@
 .include "x16.inc"
 .include "zsm.inc"
 .include "macros.inc"
+.include "via.inc"
 
 
 EXPORT_TAGGED "init_player"
@@ -22,7 +23,9 @@ EXPORT_TAGGED "get_music_speed"
 ; included in the main api .inc files
 
 IMPORT_TAGGED "nextdata"
+IMPORT_TAGGED "ymwrite_viat1"
 EXPORT_TAGGED "data"
+EXPORT_TAGGED "ym_write"
 
 ZSM_HDR_SIZE	=	16	; does not include PRG header which isn't loaded
 ZSM_EOF			=	$80	; (equates to pause cmd with value=0)
@@ -54,6 +57,7 @@ ZSM_VECTOR_user:		.res 2	; custom data event handler
 ZSM_VECTOR_done:		.res 2	; callback to handle ZSM data EOF
 ZSM_VECTOR_notify:		.res 2	; callback when music loops or ends
 ZSM_VECTOR_play:		.res 2  ; music playback routine
+ZSM_VECTOR_ymwrite:		.res 2	; selectable YM busy-wait-write routine
 ZSM_VECTOR_COUNT	= (*-ZSM_VECTOR_TABLE)
 
 
@@ -172,8 +176,33 @@ next_vector:
 			inx
 			cpx #ZSM_VECTOR_COUNT
 			bne next_vector
+			
+			; default to handling ZSM playback rate internally
 			lda #1
-			sta zsm_scale60hz	; default to handling ZSM playback rate internally
+			sta zsm_scale60hz
+			
+			; todo: accept timing source via either a define() or as an
+			;       argument to init()... for now, just use VIA2_T1
+
+			; make sure IRQ is disabled for VIA2 T1
+			lda #$40	; bit mask to clear only the VIA2 IRQ enable
+			sta VIA2_ier
+			; set VIA2 T1 into one-shot mode / PB7 disabled (T1 bits = 00)
+			lda VIA2_acr
+			and #$3F	; keep bits 0-5
+			sta VIA2_acr
+			
+			; initialize VIA2 t1 timer
+			lda #133	; see ymwrite_viat1.asm for how this value is chosen.
+			sta VIA2_t1cl
+			stz VIA2_t1ch
+			
+			; set YM_WRITE vector
+			lda #<ymwrite_viat1
+			sta ZSM_VECTOR_ymwrite
+			lda #>ymwrite_viat1
+			sta ZSM_VECTOR_ymwrite+1
+			
 			rts
 .endproc
 
@@ -470,20 +499,18 @@ add_step:
 			stz	delay
 			;silence the voices used by the YM2151
 			ldx #0			; .X = voice index 0..7
-			lda #$20		; .A = LR|FB|CON register for voice ($20..$27)
 YMloop:		ror zsm_chanmask
 			bcc nextYM
-			YM_BUSY_WAIT
 			ldy #08
-			sty YM_reg		
-			nop
-			stx	YM_data		; send KeyUP for voice
-			YM_BUSY_WAIT
-			sta YM_reg		; select LR|FB|CON register for voice
-			nop
-			stz YM_data		; set to 0 to disable L and R output
+			txa				; send KeyUP for voice
+			jsr ym_write
+			clc
+			adc #$20		; $20+.x = LR|FB|CON register for current voice
+			tay
+			lda #0
+			jsr ym_write
+			
 nextYM:		inx
-			inc
 			cpx	#8
 			bne YMloop
 			stz zsm_chanmask
@@ -589,10 +616,8 @@ nextYM:
 			lda (data)
 			tay				; Y now holds the YM register address
 			jsr nextdata
-			YM_BUSY_WAIT
-			sty YM_reg
 			lda (data)
-			sta YM_data
+			jsr ym_write
 			bra nextYM		; 3
 CallHandler:
 			jsr nextdata
@@ -783,4 +808,8 @@ done:		rts
 			ldx zsm_rate
 			ldy zsm_rate+1
 			rts
+.endproc
+
+.proc ym_write: near
+			jmp (ZSM_VECTOR_ymwrite)
 .endproc

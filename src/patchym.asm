@@ -3,6 +3,7 @@
 ;.include "zsm.inc"
 .include "macros.inc"
 
+IMPORT_TAGGED "ym_write"
 EXPORT_TAGGED "patchym"
 
 .segment  "CODE"
