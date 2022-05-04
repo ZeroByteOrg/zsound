@@ -1,8 +1,3 @@
-
-# ZSM format specification
-
-ZSM is a format standard specifying both a data stream format and a file header and layout format designed to be loaded into and played back from HIRAM. The stream format is suitable for playback from any region of memory, but the playback routine assumes HIRAM is in use. Any ZSM stream of more than 8k in size would cause the library’s playback routine to handle it improperly, assuming a bank wrap at the nearest 8k boundary in memory. This may be changed in the future to allow loading/playing ZSM from main memory if desired.
-
 ## ZSOUND Data formats
 
 Extension|Format
@@ -10,6 +5,11 @@ Extension|Format
 ZSM | Zsound Streaming Music
 ZFX | Zsound sFX
 YMP | YM2151 Patch data
+ZCM | PCM audio
+
+# ZSM format specification
+
+ZSM is a format standard specifying both a data stream format and a file header and layout format designed to be loaded into and played back from HIRAM. The stream format is suitable for playback from any region of memory, but the playback routine assumes HIRAM is in use. Any ZSM stream of more than 8k in size would cause the library’s playback routine to handle it improperly, assuming a bank wrap at the nearest 8k boundary in memory. This may be changed in the future to allow loading/playing ZSM from main memory if desired.
 
 ## ZSM file composition
 
@@ -23,26 +23,29 @@ Offset|Length|Field
 
 ### PRG Header
 
-These 2 bytes are technically not part of the ZSM file format. Currently, the Kernal assumes that all files begin with a 2-byte load-to address and skips them when loading files into memory. If your program loads a file byte by byte instead of using the Kernal LOAD routines, then it should skip these 2 bytes.
+These 2 bytes are technically not part of the ZSM file format. Until recently, the Kernal assumes that all files begin with a 2-byte load-to address "header" and skips them when loading files into memory. If your program loads a file byte by byte instead of using the Kernal LOAD routines, then it should skip these 2 bytes. Kernal LOAD now supports headerless mode, but the BASIC UI does not expose this mode very well as of R40. Once it is possible to perform such loads equally easily from the "command line" or from within programs, the PRG header bytes are likely to be removed.
 
 ### ZSM Header
 
-The header is 16 bytes long (excluding PRG header above).
+The ZSM header is 16 bytes long.
 
-(note – all multi-byte values are little endian unless specified otherwise)
+- All multi-byte values are little endian unless specified otherwise
+- All offsets are relative to the beginning of the ZSM header
 
 Offset|Length|Field|Description
 ---|---|---|---
-0x00|3|Loop offset|Relative to start-of-file (including the header). The first two bytes are the "window offset" and the third byte is the "bank offset".
-0x03|3|PCM offset|Format is the same as Loop offset. Points to the first byte of the PCM header. All-zeroes or bank offset=0xFF indicate no PCM data or header is present.
-|0x06|1|FM channel mask|Bit 0-7 are set if the corresponding OPM channel is used by the music.
+0x00|3|Loop Point|"HiPtr" to the offset in data stream to loop back to from EOF. (see following notes for format of "HiPtr")
+0x03|3|PCM offset|"HiPtr" to the beginning of the PCM index table (if present). All-zeroes or bank offset=0xFF indicate no PCM data or header is present.
+0x06|1|FM channel mask|Bit 0-7 are set if the corresponding OPM channel is used by the music.
 0x07|2|PSG channel mask|Bits 0-15 are set if the corresponding PSG channel is used by the music.
 0x09|2|Playback rate in Hz|The value of each delay "tick" = 1/rate seconds of delay.
-|0x0B|5|RESERVED|Reserved for future use
+0x0B|5|RESERVED|Reserved for future use
 
 **Notes**
 
-1. If the loop offset is `0x00, 0x01, 0x01`, this indicates that the loop point is 0x100 bytes higher in memory than the load point, and one bank above the starting bank. If the file is loaded at 0xA000, bank 2, then the loop point is 0xA100, bank 3. Bank offset value of 0xFF means that the stream does not loop and should terminate playback when reached.
+1. "HiPtr" Format is a 16bit little endian value: memory offset, followed by a single unsigned byte: bank offset.
+2. The memory offset portion is a value in the range 0x0000..0x1FFF.
+3. For a given number (N) of bytes of offsetIf the loop offset is `0x00, 0x01, 0x01`, this indicates that the loop point is 0x100 bytes higher in memory than the load point, and one bank above the starting bank. If the file is loaded at 0xA000, bank 2, then the loop point is 0xA100, bank 3. Bank offset value of 0xFF means that the stream does not loop and should terminate playback when reached.
 
 ### ZSM music data Stream format
 
