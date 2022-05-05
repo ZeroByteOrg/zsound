@@ -17,20 +17,13 @@
 ;		stepmusic from the main loop, as stepmusic clobbers VERA registers and
 ;		is therefore unsafe to use during an IRQ.
 
-; Additional Note: For now, this program also plays a PCM digi clip "SHORYUKEN.PCM"
-; once during the playback at the expiration of a countdown. This is here mostly to
-; test in-context PCM playback functionality. This should be removed and used in
-; a seperate example program such as a basic sound board or something of that
-; nature since it unneccessarily complicates this program a bit. 
-
 ; x16.inc by SlithyMatt - slightly modified for multi-revision support
 .include "x16.inc"			; Import X16-related symbols
 .include "zsmplayer.inc"	; use the zsound zsm player module
-.include "pcmplayer.inc"	; use the zsound pcm player module
 
 IMPORT_TAGGED "helloworld"	; REALLY REALLY need to move this OUT of the player library - lol.
 
-ZSM_address = $A000		; memory address to load song (should be in HIRAM bank window)
+ZSM_address := $BFE9		; memory address to load song (should be in HIRAM bank window)
 ZSM_bank 	= 2			; defines starting bank in HIRAM
 
 BAR_VISIBLE_MODE	= $31
@@ -56,34 +49,6 @@ RASTER_LINE_TOP		= 0	; first visible row of pixels?
 	filename:	.byte "bgm39.zsm"
 .endif
 filename_len = (* - filename)
-
-diginame:	.byte "shoryuken.pcm"
-diginame_len = (* - diginame)
-
-.segment "DATA"
-; PCM parameter table to pass to start_digi
-.if 1
-shoryuken:
-	.word	0			; replaced with PCM_address at runtime
-	.byte 	0			; replaced with PCM_bank at runtime
-	.byte	<(135628)	; size of digi (in bytes)
-	.byte	>(135628)
-	.byte	^(135628)
-	.byte	$3f			; stereo 16bit
-	.byte	(22000/(25000000>>16))+1	; 22khz sample rate
-.else
-shoryuken:
-	.word	0			; replaced with PCM_address at runtime
-	.byte 	0			; replaced with PCM_bank at runtime
-	.byte	<(12330)	; size of digi (in bytes)
-	.byte	>(12330)
-	.byte	^(12330)
-	.byte	$0f			; mono 8bit
-	.byte	(8000/(25000000>>16))+1	; 8khz sample rate
-.endif
-	
-PCM_address	:= shoryuken
-PCM_bank	:= shoryuken + 2
 
 ; -----------------------------------------------------------------
 
@@ -123,38 +88,9 @@ main:		wai					; save power :)
 			sta	semaphore		; set the semaphore so the main loop only plays once per frame
 			sta	VERA_dc_video	; display L1 for a visible performance meter bar
 			jsr	playmusic
-			jsr play_pcm
 			lda	#BAR_HIDDEN_MODE
 			sta	VERA_dc_video	; hide L1 to end the "rasterbar"
-			; do a countdown and play "shoryuken" sound when it reaches zero.
-			lda countdown
-			ora countdown+1
-			beq main			; don't play the digi more than once
-			lda countdown
-			sec
-			sbc #1
-			sta countdown
-			bne notrigger
-			lda countdown+1
-			beq trigger
-			sbc #0
-			sta countdown+1
-			bne main
-trigger:
-			stz countdown
-			stz countdown+1
-			ldx #<shoryuken		; load address of PCM parameter table "shoryuken"
-			ldy #>shoryuken		; into .XY
-			lda #0				; A = memory bank where table is stored.
-			jsr start_digi		; (in this case, main memory, so A doesn't matter)
-			bra	main
-notrigger:
-			lda countdown+1
-			sbc #0
-			sta countdown+1
 			bra main
-countdown:
-			.word	$180
 			
 ; -----------------------------------------------------------------
 
@@ -249,7 +185,6 @@ start:
 			; initialize the player so that it doesn't do anything
 			; during IRQs prior to startmusic: being called.
 			jsr init_player
-			jsr init_pcm
 
 			;  ==== load zsm file into memory ====
 
@@ -266,37 +201,10 @@ start:
 			ldx	#8	; device 8
 			ldy #0	; 0 = no command
 			jsr	SETLFS
-			; load song to $A000
+			; load song to ZSM_address
 			lda	#0		; 0=load, 1=verify, 2|3 = VLOAD to VRAM bank0/bank1
-			ldx	#0
-			ldy #$a0
-			jsr LOAD
-
-			; store the memory address following the end of the ZSM data
-			stx	PCM_address
-			sty PCM_address+1
-			ldx RAM_BANK
-			stx PCM_bank
-
-			;  ==== load digi file into memory ====
-
-			; set BANKRAM to the first bank where digi should load
-			lda	PCM_bank
-			sta	RAM_BANK
-			; prepare for call to SETNAM Kernal routine
-			lda #diginame_len
-			ldx #<diginame
-			ldy #>diginame
-			jsr SETNAM
-			; prepare for call to SETLFS Kernal routine
-			lda #0	; logical file id 0
-			ldx	#8	; device 8
-			ldy #0	; 0 = no command
-			jsr	SETLFS
-			; load digi sound data
-			lda	#0		; 0=load, 1=verify, 2|3 = VLOAD to VRAM bank0/bank1
-			ldx	PCM_address
-			ldy PCM_address+1
+			ldx	#<ZSM_address
+			ldy #>ZSM_address
 			jsr LOAD
 
 			;  ==== Install IRQ handler to process music once per frame ====

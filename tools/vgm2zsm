@@ -405,23 +405,6 @@ function wait($t)
 	}
 }
 
-function out_asm()
-{
-	global $songdata;
-	global $bytes;
-	
-	print "songdata";
-	for ($j=0;$j<sizeof($songdata);$j++) {
-	  if ($j%PERLINE != 0) {
-		print ",";
-	  } else {
-		print "\n\tbyte ";
-	  };
-	  printf('$%02x',$songdata[$j]);
-	};
-	print "\n";
-}
-
 function out_zsm($ofile)
 {
 	global $songdata;
@@ -929,7 +912,6 @@ $maxatbyte=0;
 define ("HDRSIZE",16);
 //$songdata=array(0,0,0xff);
 $songdata=array_fill(0,HDRSIZE,0); // create an array 0..HDRSIZE of zeros
-$songdata[2] = 0xff; // set the "bank" value of the loop pointer to FF (no loop by default)
 $ymbuffer=array();
 
 $channelsused=array('ym'=>0, 'psg'=>0); // bitflags for channels used by the VGM
@@ -1234,9 +1216,13 @@ printf ("[%06x] : Unknown command (%2x)\n",$i-1,$cmd);
 	  flushymbuffer();
 	  writepause();
 	  // note: the loop offset pointer in the header is relative to start-of-file, not start-of-data
-	  $songdata[2] = intdiv(($bytes+HDRSIZE),0x2000); // how many 8K banks into the tune is the loop point
-	  $songdata[0] = (($bytes+HDRSIZE) % 0x2000) & 0xff;
-	  $songdata[1] = ((($bytes+HDRSIZE) % 0x2000) >> 8) & 0xff;
+	  $offset = $bytes+HDRSIZE;
+	  $songdata[0] = $offset & 0xff;
+	  $songdata[1] = ($offset >> 8) & 0xff;
+	  $songdata[2] = ($offset >> 16) & 0xff;
+	  //$songdata[2] = intdiv(($bytes+HDRSIZE),0x2000); // how many 8K banks into the tune is the loop point
+	  //$songdata[0] = (($bytes+HDRSIZE) % 0x2000) & 0xff;
+	  //$songdata[1] = ((($bytes+HDRSIZE) % 0x2000) >> 8) & 0xff;
   }
 };
 flushymbuffer(); // call separately just in case there is a buffer and not enough time remaining for a final delay command...
@@ -1257,7 +1243,6 @@ printf("                        @ 0x%4x\n",$maxatbyte);
 };
 
 out_zsm(OUTFILENAME);
-//out_asm();
 print "; $bytes bytes of data\n";
 print "; $num_maxpause MAXPAUSE frames\n";
 print "; $biggest_pause = longest pause frame\n";

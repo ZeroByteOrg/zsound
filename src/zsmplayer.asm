@@ -255,6 +255,7 @@ dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 			ldx RAM_BANK
 			phx		; save current BANK to restore later
 			sta RAM_BANK
+			sta STARTBANK ; self-mod the code below to use the starting bank #.
 			; copy the loop offset from the header data into main memory
 			lda (data)
 			sta loop_pointer + SONGPTR::addr
@@ -296,9 +297,13 @@ dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 			bne :-
 			
 			; check if there is a loop or not
-			lda #$FF
-			cmp loop_pointer + SONGPTR::bank
+			lda loop_pointer + SONGPTR::bank
 			bne calculate_loop
+			lda loop_pointer + SONGPTR::addr+1
+			bne calculate_loop
+			lda loop_pointer + SONGPTR::addr
+			cmp #16
+			bcs calculate_loop
 			; if not, set the loop pointer to point at the beginning of the tune
 			; and set the done vector = stopmusic
 			lda data
@@ -311,27 +316,44 @@ dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 			bra done
 
 calculate_loop:
-			; If the song loops, add loop offset to load address
-			; and set done vector = continuemusic
+			; If the song loops, convert byte offset into direct memory pointer
+			; addr = (load_point + size) & $1FFF | $a000
+			; bank = (load_point + size - $A000) >> 13 + load_bank
 			clc
-			lda tmp + SONGPTR::addr
+			lda tmp + SONGPTR::addr ; load_point
 			adc loop_pointer + SONGPTR::addr
 			sta loop_pointer + SONGPTR::addr
-			lda loop_pointer + SONGPTR::addr + 1
-			cmp #$20
-			bcs die	; invalid loop data >= $2000 
-			adc tmp + SONGPTR::addr + 1
-			cmp #$c0	; see if adjusted location exceeds bank window
-			bcc	calculate_bank	; if not, continue by calculating bank of loop point
-			sbc #$20			; if so, wrap the offset address, and bank pointer++
-			inc loop_pointer + SONGPTR::bank
-calculate_bank:
-			sta loop_pointer + SONGPTR::addr + 1
-			lda tmp + SONGPTR::bank
+			lda tmp + SONGPTR::addr+1
+			adc loop_pointer + SONGPTR::addr+1
+			tax		; store a copy in X to preserve 3 MSB for bank calc
+			and #$1F
+			ora #$a0
+			sta loop_pointer + SONGPTR::addr+1
+			; loop_pointer now contains addr in SONGPTR::addr fields.
+			; Resume calculation for bank by rotating left 3 bits from the
+			; value in X into the LSB of loop_ptr+2 after adding the carry
+			; from first calc into loop_pointer+2
+			lda loop_pointer + SONGPTR::bank
+			adc #0
+			bcs die
+			sta loop_pointer + SONGPTR::bank
+			txa
+			sec
+			sbc #$a0
+			asl
+			rol loop_pointer + SONGPTR::bank
+			bcs die
+			asl
+			rol loop_pointer + SONGPTR::bank
+			bcs die
+			asl
+			rol loop_pointer + SONGPTR::bank
+			bcs die
+			; do +load_bank portion of second calculation
+			lda #$FF
+			STARTBANK := (*-1)
 			adc loop_pointer + SONGPTR::bank
-			bcs	die 	; loop bank points past end of HIRAM
-			cmp #$FF	; did we end up with loop bank = FF?
-			beq die		; if so, then die (FF is an invalid loop bank)
+			bcs die
 			sta loop_pointer + SONGPTR::bank
 			lda #0
 			jsr force_loop

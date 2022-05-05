@@ -19,7 +19,7 @@ Offset|Length|Field
 0x02|16|ZSM HEADER
 0x12|?|ZSM STREAM
 ?|?|(optional) PCM HEADER
-?|?|PCM DATA
+?|?|(optional) PCM DATA
 
 ### PRG Header
 
@@ -34,18 +34,12 @@ The ZSM header is 16 bytes long.
 
 Offset|Length|Field|Description
 ---|---|---|---
-0x00|3|Loop Point|"HiPtr" to the offset in data stream to loop back to from EOF. (see following notes for format of "HiPtr")
-0x03|3|PCM offset|"HiPtr" to the beginning of the PCM index table (if present). All-zeroes or bank offset=0xFF indicate no PCM data or header is present.
+0x00|3|Loop Point|Offset to the starting point of song loop. 0 = no looping.
+0x03|3|PCM offset|Offset to the beginning of the PCM index table (if present). 0 = no PCM data or header is present.
 0x06|1|FM channel mask|Bit 0-7 are set if the corresponding OPM channel is used by the music.
 0x07|2|PSG channel mask|Bits 0-15 are set if the corresponding PSG channel is used by the music.
-0x09|2|Playback rate in Hz|The value of each delay "tick" = 1/rate seconds of delay.
+0x09|2|Tick Rate|The rate (in Hz) that each song tick should be advanced.
 0x0B|5|RESERVED|Reserved for future use
-
-**Notes**
-
-1. "HiPtr" Format is a 16bit little endian value: memory offset, followed by a single unsigned byte: bank offset.
-2. The memory offset portion is a value in the range 0x0000..0x1FFF.
-3. For a given number (N) of bytes of offsetIf the loop offset is `0x00, 0x01, 0x01`, this indicates that the loop point is 0x100 bytes higher in memory than the load point, and one bank above the starting bank. If the file is loaded at 0xA000, bank 2, then the loop point is 0xA100, bank 3. Bank offset value of 0xFF means that the stream does not loop and should terminate playback when reached.
 
 ### ZSM music data Stream format
 
@@ -55,19 +49,17 @@ CMD|DATA (variable)|CMD|DATA|...|0x80
 
 #### CMD (command) byte values
 
-Value|Field|Description
---|---|--
-0x00-0x3F|PSG write|CMD is the VERA PSG register offset to be written. The following 1 byte is the value to be written into the PSG register. The register is to be considered as an offset from 0x1F9C0 which is the first PSG register. Thus CMD 0-3 = voice 0, 4-7 = voice 1, etc.
-0x40|Event command|The following 3 bytes are used as callback hooks for event streams in the music. If the first byte is $00-$7F this is reserved for PCM events. Otherwise, it is a custom event and the 3 bytes are sent to the custom callback handler. Custom events may be safely ignored if implementing your own playback routines/engine.
-|0x41-0x7F|FM write|Bits 0-5 specify a value N. Following this command are N reg/val pairs to be written into the YM2151. Each reg/val pair is two bytes. Write val into OPM register reg. Do this for N pairs of bytes.
-0x80|End of data|If the song has a specified a loop, the player should continue processing the data at that point immediately (without delaying to the next frame).
-0x81-0xFF|Delay|The seven least significant bits give the number of ticks to delay before proceeding. Delay of zero would be CMD of 0x80 which is the "end of data" token. All other values are the number of ticks to delay.
+Value|CMD|Argument bytes|Description
+--|---|--|--
+0x00-0x3F|PSG write|1|CMD is the VERA PSG register offset to be written. The following 1 byte is the value to be written into the PSG register. The register is to be considered as an offset from 0x1F9C0 which is the first PSG register. Thus CMD 0-3 = voice 0, 4-7 = voice 1, etc.
+0x40|Extension command|3|The following 3 bytes are used as callback hooks for event streams in the music such as triggering PCM instruments, synchronization messages, etc. Extension commands are 3 bytes in length and of the general format EXTCMD + A + B. EXTCMD byte values 0x00..0x7F are reserved for official ZSM extensions. 0x80..0xFF are user-defined extensions, and will be passed to a user callback along with the A and B bytes. Even if the user-defined EXTCMD does not require 2 bytes, each command MUST be 3 bytes in length. Player implementations may safely ignore user-defined EXT commands.
+0x41-0x7F|FM write|N|Bits 0-5 of CMD specify a value N. Following this command are N reg/val pairs to be written into the YM2151. Each reg/val pair is two bytes. Write val into OPM register reg. Do this for N pairs of bytes.
+0x80|End of data|0|If the song has a specified a loop, the player should continue processing the data at that point immediately (without delaying to the next frame). ZSM streams MUST terminate with this byte.
+0x81-0xFF|Delay|0|The seven least significant bits give the number of ticks to delay before proceeding. Delay of zero would be CMD of 0x80 which is the "end of data" token. All other values are the number of ticks to delay.
 
 **Notes**
 
-1. Zsmplayer has implemented callbacks to allow applications to modify the looping
-behavior on the fly during playback, to limit the number of repeats, for instance.
-2. While this document describes the commands in ranges for ease-of-reading and clarity, it is recommended that you consider the CMD as being a bit-masked value. If MSB is set, the CMD is a delay command. If clear, then if bit 6 is set, process as N YM writes or an event callback command (if N=0). If bits 6 and 7 are clear, the CMD is simply a PCM register offset followed by a PCM value.
+1. While this document describes the commands in ranges for ease-of-reading and clarity, it is recommended that you consider the CMD as being a bit-masked value: If MSB is set, the CMD is a delay/EOF command. If clear, then if bit 6 is set, process as N YM writes or an EXTCMD (if N=0). If bits 6 and 7 are clear, the CMD is simply a PSG register offset followed by a single PSG value.
 
 ### PCM Header and Sample Data (in ZSM context)
 
