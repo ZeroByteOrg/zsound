@@ -12,3 +12,5 @@ tmp3
 *.o39
 *.PRG
 *.img
+!lib/README.txt
+lib/*
