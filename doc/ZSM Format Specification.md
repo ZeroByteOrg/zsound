@@ -1,29 +1,24 @@
-## ZSOUND Data formats
-
-Extension|Format
----|---
-ZSM | Zsound Streaming Music
-ZFX | Zsound sFX
-YMP | YM2151 Patch data
-ZCM | PCM audio
-
 # ZSM format specification
+
+#### Current Revision: 1
 
 ZSM is a format standard specifying both a data stream format and a file header and layout format designed to be loaded into and played back from HIRAM. The stream format is suitable for playback from any region of memory, but the playback routine assumes HIRAM is in use. Any ZSM stream of more than 8k in size would cause the library’s playback routine to handle it improperly, assuming a bank wrap at the nearest 8k boundary in memory. This may be changed in the future to allow loading/playing ZSM from main memory if desired.
 
+Whenever it becomes necessary to modify the ZSM standard in such a way that existing software will not be compatible with files using the newer standard, this version number will be incremented, up to a maximum value of 255.
+
+#### Headerless Data File Format:
+
+ Since Kernal version r39, it is possible to load data files that do not have the CBM 2-byte load-to-address header. As of version r41, this functionality is equally accessible in the standard interactive BASIC interface. As the "PRG" header is no longer necessary, ZSM files will NOT contain this header in order to appear as any other common data file such as ``.wav``, ``.png``, etc. As such, users and programs should signal the "headerless mode" when loading a ZSM into memory on the Commander X16.
+
+
 ## ZSM file composition
 
-Offset|Length|Field
---|--|--
-0x00|2|PRG HEADER
-0x02|16|ZSM HEADER
-0x12|?|ZSM STREAM
-?|?|(optional) PCM HEADER
-?|?|(optional) PCM DATA
-
-### PRG Header
-
-These 2 bytes are technically not part of the ZSM file format. Until recently, the Kernal assumes that all files begin with a 2-byte load-to address "header" and skips them when loading files into memory. If your program loads a file byte by byte instead of using the Kernal LOAD routines, then it should skip these 2 bytes. Kernal LOAD now supports headerless mode, but the BASIC UI does not expose this mode very well as of R40. Once it is possible to perform such loads equally easily from the "command line" or from within programs, the PRG header bytes are likely to be removed.
+ Offset|Length|Field
+ --|--|--
+ 0x02|16|ZSM HEADER
+ 0x12|?|ZSM STREAM
+ ?|?|(optional) PCM HEADER
+ ?|?|(optional) PCM DATA
 
 ### ZSM Header
 
