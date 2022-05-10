@@ -11,6 +11,7 @@ tmp3
 *.o38
 *.o39
 *.PRG
+!examples/zsmbg/SETSPEED.PRG
 *.img
 !lib/README.txt
 lib/*
