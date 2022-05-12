@@ -176,11 +176,11 @@ next_vector:
 			inx
 			cpx #ZSM_VECTOR_COUNT
 			bne next_vector
-			
+
 			; default to handling ZSM playback rate internally
 			lda #1
 			sta zsm_scale60hz
-			
+
 			; todo: accept timing source via either a define() or as an
 			;       argument to init()... for now, just use VIA2_T1
 
@@ -191,18 +191,18 @@ next_vector:
 			lda VIA2_acr
 			and #$3F	; keep bits 0-5
 			sta VIA2_acr
-			
+
 			; initialize VIA2 t1 timer
-			lda #133	; see ymwrite_viat1.asm for how this value is chosen.
+			lda #144	; see ymwrite_viat1.asm for how this value is chosen.
 			sta VIA2_t1cl
 			stz VIA2_t1ch
-			
+
 			; set YM_WRITE vector
 			lda #<ymwrite_viat1
 			sta ZSM_VECTOR_ymwrite
 			lda #>ymwrite_viat1
 			sta ZSM_VECTOR_ymwrite+1
-			
+
 			rts
 .endproc
 
@@ -246,7 +246,7 @@ dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 .endproc
 
 ;.............
-; startmusic : 
+; startmusic :
 ;============================================================================
 ; Arguments:
 ;	A	: HIRAM bank of tune
@@ -307,7 +307,7 @@ dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 			inx
 			cpx	#3
 			bcc :-
-			
+
 			; get song playback rate and convert to ticks/frame
 			lda (data)
 			sta zsm_rate
@@ -318,13 +318,13 @@ dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 			tay				; Y is the hi byte argument to set_music_speed
 			jsr nextdata
 			jsr set_music_speed
-			
+
 			; move pointer to the first byte of music data
 			ldx #5			; currently 5 bytes of reserved (unused) space
 :			jsr nextdata
 			dex
 			bne :-
-			
+
 			; check if there is a loop or not
 			lda loop_pointer + SONGPTR::bank
 			bne calculate_loop
@@ -386,7 +386,7 @@ calculate_loop:
 			sta loop_pointer + SONGPTR::bank
 			lda #0
 			jsr force_loop
-			
+
 done:		pla
 			sta RAM_BANK	; restore the RAM_BANK to what it was before
 			lda #1
@@ -402,7 +402,7 @@ die:
 .endproc
 
 ;..................
-; set_music_speed : 
+; set_music_speed :
 ; ===========================================================================
 ; Arguments:
 ;	X/Y	: Playback speed in Hz. (x=lo, y=hi)
@@ -413,7 +413,7 @@ die:
 ; Converts Hz into ticks/frame, sets the zsm_steps.zsm_fracstep variables
 ; Chooses the appropriate playback routine as follows:
 ;   stepmusic: Rate = 60Hz or if using a hi-res timing source
-;   
+;
 ;
 ; note that the default=60Hz for files with no Hz specified. We could add some
 ; code to just write 0001.00 into memory and exit early, but I've chosen to
@@ -422,7 +422,7 @@ die:
 .proc set_music_speed: near
 			; X/Y = tick rate (Hz) - divide by 60 and store to zsm_steps
 			; use the ZP variable as tmp space
-			
+
 			value := r0			; use kernal ZP r0 tmp space
 			frac  := r1			; but with meaningul names here
 			stx value
@@ -470,7 +470,7 @@ hz_to_tickrate:
 setplayer:
 			CHOOSE_PLAYER
 			rts
-			
+
 rshift3:	; rshift 3 byte value (X = number of shifts)
 			lsr value+1
 			ror value
@@ -478,7 +478,7 @@ rshift3:	; rshift 3 byte value (X = number of shifts)
 			dex
 			bne rshift3
 			rts
-			
+
 rshift2:
 			ldx #4	; we're always >>4 in this phase
 :			lsr value
@@ -504,7 +504,7 @@ add_step:
 .endproc
 
 ;............
-; stopmusic : 
+; stopmusic :
 ; ===========================================================================
 ; Arguments: (none)
 ; Returns: (none)
@@ -531,12 +531,12 @@ YMloop:		ror zsm_chanmask
 			tay
 			lda #0
 			jsr ym_write
-			
+
 nextYM:		inx
 			cpx	#8
 			bne YMloop
 			stz zsm_chanmask
-			
+
 			; set up VERA data0 port to sweep through the PSG volumes.
 			VERA_SELECT_PSG -3 ; -3 = step amount of -4
 			; VERA_SELECT_PSG macro sets step=0, we need step=4
@@ -561,9 +561,9 @@ nextPSG:					; changing anything.
 			bne PSGloop1
 			dey
 			bne PSGloop2
-			
+
 			; music channels are now silenced.
-			
+
 			jmp clear_song_pointers
 .endproc
 
@@ -590,7 +590,7 @@ nextPSG:					; changing anything.
 			lda delay
 			beq noop
 			; delay >0. Decrement, and if now 0, then play, else exit.
-			dec	
+			dec
 			sta delay
 			bne noop
 			; bank in the song data
@@ -614,7 +614,7 @@ nextnote:
 			bmi delayframe  	;
 								; 2
 			bit #$40			; 2
-			bne YMPCM			; 
+			bne YMPCM			;
 playPSG:						; 2
 			ora #$c0			; faster way to add $C0 to a value known to be < $c0. :)
 ;			clc					; 2
@@ -631,7 +631,7 @@ YMPCM:							; 3
 			beq CallHandler
 playYM:							; 2
 			tax					; 2		; X now holds number of reg/val pairs to process
-nextYM:	
+nextYM:
 			jsr nextdata
 			dex
 			bmi nextnote	; note: the most YM writes is 63, so this is a safe test
@@ -806,7 +806,7 @@ done:		rts
 			stx ZSM_VECTOR_done+1
 			cli
 			rts
-.endproc		
+.endproc
 
 .proc set_callback: near
 			sei

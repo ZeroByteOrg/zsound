@@ -27,6 +27,8 @@ EXPORT_TAGGED "ymwrite_viat1"
 	bvc	:-			; 2	; wait for VIA2 t1 timer to expire
 	sty	YM_reg		; 4
 	nop				; 2
+	nop
+	nop
 	sta	YM_data		; 4
 	stz VIA2_t1ch	; 4 ; re-trigger the timer
 	rts
