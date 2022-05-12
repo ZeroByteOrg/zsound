@@ -8,15 +8,15 @@ Whenever it becomes necessary to modify the ZSM standard in such a way that exis
 
 #### Headerless Data File Format:
 
- Since Kernal version r39, it is possible to load data files that do not have the CBM 2-byte load-to-address header. As of version r41, this functionality is equally accessible in the standard interactive BASIC interface. As the "PRG" header is no longer necessary, ZSM files will NOT contain this header in order to appear as any other common data file such as ``.wav``, ``.png``, etc. As such, users and programs should signal the "headerless mode" when loading a ZSM into memory on the Commander X16.
+ Since Kernal version r39, it is possible to load data files that do not have the CBM 2-byte load-to-address header. As of version r41, this functionality is equally accessible in the standard interactive BASIC interface. As the "PRG" header is no longer necessary, ZSM files will NOT contain this header in order to appear as any other common data file such as ``.wav``, ``.png``, etc. As such, users and programs should signal the "headerless mode" when loading a ZSM into memory on the Commander X16. The previously-suggested dummy PRG header has been incorporated to the ZSM header as a magic header for file identity verification purposes.
 
 
 ## ZSM file composition
 
  Offset|Length|Field
  --|--|--
- 0x02|16|ZSM HEADER
- 0x12|?|ZSM STREAM
+ 0x00|16|ZSM HEADER
+ 0x10|?|ZSM STREAM
  ?|?|(optional) PCM HEADER
  ?|?|(optional) PCM DATA
 
@@ -29,22 +29,34 @@ The ZSM header is 16 bytes long.
 
 Offset|Length|Field|Description
 ---|---|---|---
-0x00|3|Loop Point|Offset to the starting point of song loop. 0 = no looping.
-0x03|3|PCM offset|Offset to the beginning of the PCM index table (if present). 0 = no PCM data or header is present.
-0x06|1|FM channel mask|Bit 0-7 are set if the corresponding OPM channel is used by the music.
-0x07|2|PSG channel mask|Bits 0-15 are set if the corresponding PSG channel is used by the music.
-0x09|2|Tick Rate|The rate (in Hz) that each song tick should be advanced.
-0x0B|5|RESERVED|Reserved for future use
+0x00|2|Magic Header| The string 'zm' (binary 0x7a 0x6d)
+0x02|1|Version| ZSM Version. 0-0xFE (0xFF is reserved)
+0x03|3|Loop Point|Offset to the starting point of song loop. 0 = no looping.
+0x06|3|PCM offset|Offset to the beginning of the PCM index table (if present). 0 = no PCM data or header is present.
+0x09|1|FM channel mask|Bit 0-7 are set if the corresponding OPM channel is used by the music.
+0x0a|2|PSG channel mask|Bits 0-15 are set if the corresponding PSG channel is used by the music.
+0x0c|2|Tick Rate|The rate (in Hz) that each song tick should be advanced.
+0x0e|2|reserved| Reserved for future use. Set to zero.
 
 ### ZSM music data Stream format
 
-Byte 0|Byte 1 - n|Byte n+1|Byte n+2 - ...|...|End of stream
+Byte 0|Byte 1|Byte n|Byte n+1|...|End of stream
 ---|---|---|---|---|---
 CMD|DATA (variable)|CMD|DATA|...|0x80
 
 #### CMD (command) byte values
+CMD bytes are bit-packed to hold a command Type ID and a value (n) as follows:
 
-Value|CMD|Argument bytes|Description
+CMD|Bit Pattern|Type|Arg. Bytes|Action
+---|--|--|--|-----
+0x00-0x3F|`00nnnnnn`|PSG data|1  | Write the following byte into PSG register offset *n*. (from 0x1F9C0 in VRAM)
+ 0x40     |`01000000`|EXTCMD  |1+?| The following byte is an extension command. (see below for EXTCMD syntax)
+ 0x41-0x7F|`01nnnnnn`|FM data |2*n*  | Write the following *n* reg/val pairs into the YM2151.
+0x80|`10000000`|EOF   |0  |This byte MUST be present at the end of the data stream. Player may loop or halt as necessary.
+0x81-0xFF|`1nnnnnnn`|Delay   |0  |Delay *n* ticks.
+
+
+Value|CMD|Argument bytes|Action
 --|---|--|--
 0x00-0x3F|PSG write|1|CMD is the VERA PSG register offset to be written. The following 1 byte is the value to be written into the PSG register. The register is to be considered as an offset from 0x1F9C0 which is the first PSG register. Thus CMD 0-3 = voice 0, 4-7 = voice 1, etc.
 0x40|Extension command|3|The following 3 bytes are used as callback hooks for event streams in the music such as triggering PCM instruments, synchronization messages, etc. Extension commands are 3 bytes in length and of the general format EXTCMD + A + B. EXTCMD byte values 0x00..0x7F are reserved for official ZSM extensions. 0x80..0xFF are user-defined extensions, and will be passed to a user callback along with the A and B bytes. Even if the user-defined EXTCMD does not require 2 bytes, each command MUST be 3 bytes in length. Player implementations may safely ignore user-defined EXT commands.
