@@ -2,7 +2,7 @@
 
 #### Current Revision: 1
 
-ZSM is a format standard specifying both a data stream format and a file header and layout format designed to be loaded into and played back from HIRAM. The stream format is suitable for playback from any region of memory, but the playback routine assumes HIRAM is in use. Any ZSM stream of more than 8k in size would cause the library’s playback routine to handle it improperly, assuming a bank wrap at the nearest 8k boundary in memory. This may be changed in the future to allow loading/playing ZSM from main memory if desired.
+ZSM is a standard specifying both a data stream format and a file structure for containing the data stream. This document provides the standard for both the ZSM stream format and for the ZSM container file format.
 
 Whenever it becomes necessary to modify the ZSM standard in such a way that existing software will not be compatible with files using the newer standard, this version number will be incremented, up to a maximum value of 255.
 
@@ -35,8 +35,9 @@ Offset|Length|Field|Description
 0x06|3|PCM offset|Offset to the beginning of the PCM index table (if present). 0 = no PCM data or header is present.
 0x09|1|FM channel mask|Bit 0-7 are set if the corresponding OPM channel is used by the music.
 0x0a|2|PSG channel mask|Bits 0-15 are set if the corresponding PSG channel is used by the music.
-0x0c|2|Tick Rate|The rate (in Hz) that each song tick should be advanced.
+0x0c|2|Tick Rate|The rate (in Hz) for song delay ticks. *60Hz (one tick per frame) is recommended.*
 0x0e|2|reserved| Reserved for future use. Set to zero.
+
 
 ### ZSM music data Stream format
 
@@ -56,34 +57,74 @@ CMD|Bit Pattern|Type|Arg. Bytes|Action
 0x81-0xFF|`1nnnnnnn`|Delay   |0  |Delay *n* ticks.
 
 
-Value|CMD|Argument bytes|Action
---|---|--|--
-0x00-0x3F|PSG write|1|CMD is the VERA PSG register offset to be written. The following 1 byte is the value to be written into the PSG register. The register is to be considered as an offset from 0x1F9C0 which is the first PSG register. Thus CMD 0-3 = voice 0, 4-7 = voice 1, etc.
-0x40|Extension command|3|The following 3 bytes are used as callback hooks for event streams in the music such as triggering PCM instruments, synchronization messages, etc. Extension commands are 3 bytes in length and of the general format EXTCMD + A + B. EXTCMD byte values 0x00..0x7F are reserved for official ZSM extensions. 0x80..0xFF are user-defined extensions, and will be passed to a user callback along with the A and B bytes. Even if the user-defined EXTCMD does not require 2 bytes, each command MUST be 3 bytes in length. Player implementations may safely ignore user-defined EXT commands.
-0x41-0x7F|FM write|N|Bits 0-5 of CMD specify a value N. Following this command are N reg/val pairs to be written into the YM2151. Each reg/val pair is two bytes. Write val into OPM register reg. Do this for N pairs of bytes.
-0x80|End of data|0|If the song has a specified a loop, the player should continue processing the data at that point immediately (without delaying to the next frame). ZSM streams MUST terminate with this byte.
-0x81-0xFF|Delay|0|The seven least significant bits give the number of ticks to delay before proceeding. Delay of zero would be CMD of 0x80 which is the "end of data" token. All other values are the number of ticks to delay.
+#### EXTCMD (Extension command) specification
 
-**Notes**
+Extension commands provide optional functionality within a ZSM music file. EXTCMD may be ignored by any player. EXTCMD defines 4 "channels" of message streams. Players may implement support for any, all, or none of the channels as desired. An EXTCMD may specify up to 63 bytes of data. If more data than this is required, then it must be broken up into multiple EXTCMDs.
 
-1. While this document describes the commands in ranges for ease-of-reading and clarity, it is recommended that you consider the CMD as being a bit-masked value: If MSB is set, the CMD is a delay/EOF command. If clear, then if bit 6 is set, process as N YM writes or an EXTCMD (if N=0). If bits 6 and 7 are clear, the CMD is simply a PSG register offset followed by a single PSG value.
+##### EXTCMD in ZSM stream context:
+
+...|0x40|EXTCMD|N bytes|CMD|...
+---|---|---|---|---|---
+
+##### EXTCMD byte format:
+
+Bit Pattern|C|N
+--|--|--
+`ccnnnnnn`|Extension Channel ID|Number of bytes that follow
+
+The format of the EXTCMD byte is similar to the CMD bytes. The two high bits of the value are the EXTCMD channel, while the remaining 6 bits specify how many bytes follow. Any player wishing to ignore the EXTCMD may simply skip this number of bytes and continue processing at the next CMD.
+
+##### EXTCMD Channels:
+0. PCM instrument channel
+1. Expansion Sound Devices
+2. Synchronization events
+3. Custom
+
+The formatting of the data within these 4 channels is presently undefined. Definitions for channels 0-3 will be part of the official ZSM specifications and implemented in the Zsound library. Significant changes within one of these three channels' structure may result in a new ZSM version number being issued. The formatting and content of the 3 official EXTCMD channels will be covered elsewhere.
+
+The Custom channel data may take whatever format is desired for any particular purpose with the understanding that the general ecosystem of ZSM-aware applications will most likely ignore them.
 
 ### PCM Header and Sample Data (in ZSM context)
 
-While these are included in the ZSM specification, it is intended that the PCM portion of the engine and format suite should be capable of working with pure-PCM data files and playback schemes. As such, the header and data in a ZSM file will be determined by the PCM engine’s needs.
+The size and contents of the PCM header table is not yet decided. This will depend largely on the strucure of EXTCMD channel 0, and be covered in detail in that specification.
 
-It is expected that any offset references found in the PCM header should be relative to the location of the start of the PCM header and not to the start of the ZSM file itself. See the section on PCM data format for details.
+Any offset values contained in the PCM data header block will be relative to the beginning of the PCM header, not the ZSM header. The intention is to present the digital audio portion as a set of digi clips ("samples" in tracker terminology) whose playback can be triggered by EXTCMD channel zero.
 
-### PCM Header and Data format
+## EXTCMD Channel DATA
 
-(not yet supported or specified)
+All data after the EXTCMD byte will be processed according to the channel definitions below.
 
-While the size and contents of the PCM header have not been determined at this time, this document includes our thinking in order to generate feedback from the community.
+### 0: PCM audio
 
-At the very least, the PCM header should contain a list of offsets pointing at the starting points of the various digi clips contained in the PCM data block, as well as format specifiers giving the 8/16 bit, mono/stereo, and sample rate parameters for each digi. This is speculative as it will take some experimentation with various sources of music containing PCM digis in order to determine what is a useful, reasonable, and efficient way to store and reference them. Note that this document refers to such clips as "digis" in order to disambiguate the usage of the word "sample" which also means 1 discrete PCM sample value. As this second definition is of great significance while discussing PCM playback, "sample" shall refer to one discrete sample, and not be used to mean "an audio sample" e.g. "drum sample." These will be referred as "digis." (short for digital audio clip)
+The structure of data within this channel is not yet defined.
 
-It is likely that any offset values stored here will be of the same format as those in the ZSM header, but be considered as offsets relative to the start of the PCM header. This is to make it possible to have PCM-only sound files that can be loaded outside the context of ZSM. These would be played using API commands to directly control. There would be no need to encode this information into a ZSM music stream. Thus the ZSM stream’s PCM commands are likely to mimic the various API calls.
+### 1: Expansion Sound Devices
 
-### PCM Data
+This channel is for data intended for "well-known" expansion hardware used with the Commander X16. As the community adopts various expansion hardware, such devices will be given a standard "ID" number so that all ZSM files will agree on which device is being referenced by expansion HW data.
 
-This is likely to be a simple concatenation of all PCM sample data used in the tune. It will be left up to the header to specify any sample rates, bit depths, and stereo/mono formatting requirements. In fact, many sound systems (such as Amiga MOD, Sega arcade PCM, and many others) have varying playback rates, so it is likely for the PCM commands in the ZSM data stream to feature such capabilities.
+The specification of new chip IDs should not affect the format of ZSM itself, and thus will not result in a ZSM version update. Players will simply need to update their list of known hardware.
+
+Players implementing this channel should implement detection routines during init to determine which (if any) expansion hardware is present. Any messages intended for a chip that is not present in the system should be skipped.
+
+An expansion HW write will contain the following data:
+
+Chip ID|Nuber of writes| N tuples of data
+--|--|--
+one byte|one byte|N * tuple_size bytes
+
+- The total number of bytes described MUST equal exactly the number of bytes specified in the EXTCMD.
+- The tuple_size is determined by the needs of the device, and thus will be specified per-device along with its chip ID assignment.
+
+There are currently no supported expansion HW IDs assigned.
+
+### 2: Synchronization Events
+
+The purpose of this channel is to provide for music synchronization cues that applications may use to perform operations in sync with the music (such as when the Goombas jump in New Super Mario Bros in time with the BOP! BOP! notes in the music). It is intended for the reference player to provide a sync channel callback, passing the data bytes to the callback function, and then to proceed with playback.
+
+The data structure within this channel is not yet defined. It is our intention to work with the community in order to collaborate on a useful structure.
+
+### 3: Custom
+
+The purpose for this channel is that any project with an idea that does not fit neatly into the above categories may pack data into the project's music files in whatever form is required. It should be understood that these ZSMs will not be expected to use the extended behaviors outside of the project they were designed for. The music itself, however, should play properly. The only constraint is that the data must conform to the EXTCMD byte - supplying exactly the specified number of bytes per EXTCMD.
+
+The reference playback library in Zsound will implement this channel as a simple callback passing the memory location and data size to the referenced function, and take no further action internally.
