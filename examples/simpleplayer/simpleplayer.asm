@@ -23,7 +23,7 @@
 
 IMPORT_TAGGED "helloworld"	; REALLY REALLY need to move this OUT of the player library - lol.
 
-ZSM_address := $BFE9		; memory address to load song (should be in HIRAM bank window)
+ZSM_address := $a000		; memory address to load song (should be in HIRAM bank window)
 ZSM_bank 	= 2			; defines starting bank in HIRAM
 
 BAR_VISIBLE_MODE	= $31
@@ -91,14 +91,14 @@ main:		wai					; save power :)
 			lda	#BAR_HIDDEN_MODE
 			sta	VERA_dc_video	; hide L1 to end the "rasterbar"
 			bra main
-			
+
 ; -----------------------------------------------------------------
 
 ; SWAPLAYER: Switch to using L0 as the active screen. Clear space at VRAM $4000
 ;				to use as the L1 tilemap
 
 .segment	"CODE"
-			
+
 .proc swaplayer: near
 			stz VERA_ctrl			; use data port=0 and DCSEL=0
 			VERA_SET_ADDR	$4000,1	; vram $4000, stride 1
@@ -112,7 +112,7 @@ nextbyte:	sta	VERA_data0
 			bne	nextbyte
 			dey
 			bne	nextbyte			; next page of VRAM
-			
+
 			; now copy L1 config to L0
 			ldx #6
 nextattr:	lda VERA_L1_config,X
@@ -131,12 +131,12 @@ nextattr:	lda VERA_L1_config,X
 ; -----------------------------------------------------------------
 
 ; DRAWMETER: Draw the performance bar on the screen to L1
-;		
+;
 
 .segment	"CODE"
-			
+
 .proc drawmeter: near
-			
+
 COL = 76
 			stz VERA_ctrl	; use data port 0, DCSEL=0
 			VERA_SET_ADDR	($4000 + 2*COL), 9	; stride down on screen
@@ -164,7 +164,7 @@ COL = 76
 			jsr	drawcolumn
 			stz VERA_ctrl	; put data port selection back to data0 for Kernal's benefit
 			rts				; CHROUT fails if it's set to data1 (helloworld uses CHROUT)
-			
+
 drawcolumn:
 			lda #$66		; checkerboard PETSCII character
 			ldx #$A2		; red on orange
@@ -198,8 +198,8 @@ start:
 			jsr SETNAM
 			; prepare for call to SETLFS Kernal routine
 			lda #0	; logical file id 0
-			ldx	#8	; device 8
-			ldy #0	; 0 = no command
+			ldx	#8	; FA: device 8
+			ldy #2	; SA: 2 = headerless load
 			jsr	SETLFS
 			; load song to ZSM_address
 			lda	#0		; 0=load, 1=verify, 2|3 = VLOAD to VRAM bank0/bank1
@@ -229,7 +229,7 @@ start:
 			sta VERA_irqline_l
 			lda #3				; 3=VSYNC and LINE, IRQ line_hi bit=0
 			sta VERA_ien
-			
+
 			jsr	swaplayer		; get the screen elements ready for the
 			jsr	drawmeter		; perf meter bar
 
@@ -253,7 +253,7 @@ start:
 			;jsr loopmusic
 
 			; zsmplayer has a callback feature for when a song loops/ends.
-			; The callback 
+			; The callback
 			ldx #<helloworld
 			ldy #>helloworld
 			jsr set_callback

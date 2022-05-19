@@ -37,13 +37,14 @@ step:		.res	2			; integer steps per frame
 
 .segment "BSS"
 
-loop_pointer:	.tag	SONGPTR
-tmp:			.tag	SONGPTR
-loop_count:		.res	1
-zsm_chanmask:	.tag	CHANMASK
+zsm:						.tag ZSM_HEADER
+loop_pointer		:= zsm + ZSM_HEADER::loop
+zsm_chanmask		:= zsm + ZSM_HEADER::chanmask
+zsm_rate				:= zsm + ZSM_HEADER::tickrate
+tmp:						.tag	SONGPTR
+loop_count:			.res	1
 zsm_fracsteps:	.res	3	; 16.8 fixed point: n steps per 60hz frame
 zsm_scale60hz:	.res	1	; flag for whether to use the rate->60hz conversion player
-zsm_rate:		.res	2	; the native tick rate of the ZSM from its header
 
 zsm_steps	:= zsm_fracsteps + 1
 
@@ -188,7 +189,7 @@ next_vector:
 ; I.e. channel mask is clear, play rate = 60Hz, data pointer points to
 ; an end-of-data marker, loop pointer also points to the same marker.
 ;
-
+.segment "CODE"
 .proc clear_song_pointers: near
 			; set song and loop pointers to dummy_tune
 			lda #<dummy_tune
@@ -216,8 +217,79 @@ next_vector:
 dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 .endproc
 
+;.................
+; check_zsm_file :
+;============================================================================
+; Arguments: (none)
+; Returns: (none)
+; Affects: A,X, active RAM bank
+; ---------------------------------------------------------------------------
+; Utility function to verify the loaded ZSM header in the state table is
+; valid, and if so, update the ZSM file in HiRam with the calculated
+; values and set version number to $FF to skip this check on subsequent
+; triggers.
+;
+; expects TMP to be pointing at the load point of the ZSM file.
+.segment "CODE"
+.proc check_zsm_file: near
+			; see whether we support this version
+			cmp #ZSM_MINVER
+			bcc die
+			cmp #ZSM_MAXVER
+			beq :+
+			bcs die
+
+			; check magic header
+:			lda zsm+ZSM_HEADER::magic
+			cmp #$7a ; z
+			bne die
+			lda zsm+ZSM_HEADER::magic+1
+			cmp #$6d ; m
+			bne die
+			jsr calculate_loop
+			bcs die
+update_zsm:
+			; modify the loaded ZSM file header with the calculated loop
+			; address for faster triggering upon subsequent starts...
+
+			; first set data PTR to point at the version number.
+			lda tmp+SONGPTR::bank
+			sta data+SONGPTR::bank
+			sta RAM_BANK
+			lda tmp+SONGPTR::addr
+			sta data
+			lda tmp+SONGPTR::addr+1
+			sta data+1
+			jsr nextdata
+			jsr nextdata ; skip the magic header
+			lda #$ff
+			sta (data)
+			jsr nextdata
+			lda loop_pointer+SONGPTR::addr
+			sta (data)
+			jsr nextdata
+			lda loop_pointer+SONGPTR::addr+1
+			sta (data)
+			jsr nextdata
+			lda loop_pointer+SONGPTR::bank
+			sta (data)
+			; Advance data ptr past header
+			; This is optimized for code size, not speed...
+			ldx #($10 - 5) ; 5 instances of nextdata out of 16.
+skipheader:
+			jsr nextdata
+			dex
+			bne skipheader
+			clc
+			rts
+die:
+			sec
+			rts
+.endproc
+
+
 ;.............
-; startmusic : 
+; startmusic :
 ;============================================================================
 ; Arguments:
 ;	A	: HIRAM bank of tune
@@ -245,9 +317,9 @@ dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 			; store the passed arguments into the ZP data pointer
 			; and into a tmp space so it's available later to calculate
 			; the loop offset relative to the load point.
-			sta data + SONGPTR::bank	; A = ZSM starting bank
-			stx data + SONGPTR::addr	; X = ZSM bank window address lo byte
-			sty data + SONGPTR::addr+1	; Y = ZSM bank window address hi byte
+			sta data + SONGPTR::bank   ; A = ZSM starting bank
+			stx data + SONGPTR::addr   ; X = ZSM bank window address lo byte
+			sty data + SONGPTR::addr+1 ; Y = ZSM bank window address hi byte
 			sta tmp + SONGPTR::bank
 			stx tmp + SONGPTR::addr
 			sty tmp + SONGPTR::addr+1
@@ -255,57 +327,39 @@ dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 			ldx RAM_BANK
 			phx		; save current BANK to restore later
 			sta RAM_BANK
-			sta STARTBANK ; self-mod the code below to use the starting bank #.
-			; copy the loop offset from the header data into main memory
-			lda (data)
-			sta loop_pointer + SONGPTR::addr
-			jsr nextdata
-			lda (data)
-			sta	loop_pointer + SONGPTR::addr + 1
-			jsr nextdata
-			lda	(data)
-			sta loop_pointer + SONGPTR::bank
-			jsr nextdata
-			; move data pointer past the PCM header offset bytes
-			jsr nextdata
-			jsr nextdata
-			jsr nextdata
-			; copy channel mask out of banked memory
+
+			; copy the ZSM header from loaded place in HiRAM into player's memory
 			ldx #0
-:			lda (data)
-			sta zsm_chanmask,x
+nextbyte:
+			lda (data)
+			sta zsm,x
 			jsr nextdata
 			inx
-			cpx	#3
-			bcc :-
-			
-			; get song playback rate and convert to ticks/frame
-			lda (data)
-			sta zsm_rate
-			tax				; X is the low byte argument to set_music_speed
-			jsr nextdata
-			lda (data)
-			sta zsm_rate+1
-			tay				; Y is the hi byte argument to set_music_speed
-			jsr nextdata
+			cpx #16
+			bcc nextbyte
+
+			; check ZSM version
+			; see whether it has been processed before (ver=-1)
+			lda zsm+ZSM_HEADER::version
+			cmp #$FF
+			beq go
+
+			; ZSM is not pre-checked. Check for validity
+			jsr check_zsm_file
+			bcs die
+
+go:
+			ldx zsm_rate
+			ldy zsm_rate+1
 			jsr set_music_speed
-			
-			; move pointer to the first byte of music data
-			ldx #5			; currently 5 bytes of reserved (unused) space
-:			jsr nextdata
-			dex
-			bne :-
-			
+
 			; check if there is a loop or not
 			lda loop_pointer + SONGPTR::bank
-			bne calculate_loop
-			lda loop_pointer + SONGPTR::addr+1
-			bne calculate_loop
-			lda loop_pointer + SONGPTR::addr
-			cmp #16
-			bcs calculate_loop
+			bne do_loop ; loop bank=0 means no loop in the tune.
 			; if not, set the loop pointer to point at the beginning of the tune
-			; and set the done vector = stopmusic
+			; and set the done vector = stopmusic.
+			; this is so that if the program wants to force a loop, it will
+			; loop the entire song.
 			lda data
 			sta loop_pointer + SONGPTR::addr
 			lda data+1
@@ -313,12 +367,34 @@ dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 			lda data + SONGPTR::bank
 			sta loop_pointer + SONGPTR::bank
 			jsr disable_loop
+			bra success
+do_loop:
+			lda #0
+			jsr force_loop
+success:
+			lda #1
+			sta delay	; start the music
+			clc
+done:
+			pla
+			sta RAM_BANK	; restore the RAM_BANK to what it was before
+			rts
+die:
+			stz delay	; ensure the music is not playing
+			sec			; return carry flag set to indicate failure
 			bra done
+.endproc
 
-calculate_loop:
-			; If the song loops, convert byte offset into direct memory pointer
+
+
+.proc calculate_loop: near
+			; calculate the absolute address of the loop point as follows:
 			; addr = (load_point + size) & $1FFF | $a000
 			; bank = (load_point + size - $A000) >> 13 + load_bank
+			; size is currently stored in loop_pointer, load_point is in tmp.
+
+			; TODO: make this same routine work for PCM offset as well....
+			;       .... by using tmp as starting point, and size in .axy
 			clc
 			lda tmp + SONGPTR::addr ; load_point
 			adc loop_pointer + SONGPTR::addr
@@ -350,30 +426,19 @@ calculate_loop:
 			rol loop_pointer + SONGPTR::bank
 			bcs die
 			; do +load_bank portion of second calculation
-			lda #$FF
-			STARTBANK := (*-1)
+			lda tmp + SONGPTR::bank
 			adc loop_pointer + SONGPTR::bank
 			bcs die
 			sta loop_pointer + SONGPTR::bank
-			lda #0
-			jsr force_loop
-			
-done:		pla
-			sta RAM_BANK	; restore the RAM_BANK to what it was before
-			lda #1
-			sta delay	; start the music
-			clc			; return clear carry flag to indicate success
+			clc
 			rts
 die:
-			pla
-			sta RAM_BANK
-			stz delay	; ensure the music is not playing
-			sec			; return carry flag set to indicate failure
+			sec
 			rts
 .endproc
 
 ;..................
-; set_music_speed : 
+; set_music_speed :
 ; ===========================================================================
 ; Arguments:
 ;	X/Y	: Playback speed in Hz. (x=lo, y=hi)
@@ -384,7 +449,7 @@ die:
 ; Converts Hz into ticks/frame, sets the zsm_steps.zsm_fracstep variables
 ; Chooses the appropriate playback routine as follows:
 ;   stepmusic: Rate = 60Hz or if using a hi-res timing source
-;   
+;
 ;
 ; note that the default=60Hz for files with no Hz specified. We could add some
 ; code to just write 0001.00 into memory and exit early, but I've chosen to
@@ -393,7 +458,7 @@ die:
 .proc set_music_speed: near
 			; X/Y = tick rate (Hz) - divide by 60 and store to zsm_steps
 			; use the ZP variable as tmp space
-			
+
 			value := r0			; use kernal ZP r0 tmp space
 			frac  := r1			; but with meaningul names here
 			stx value
@@ -441,7 +506,7 @@ hz_to_tickrate:
 setplayer:
 			CHOOSE_PLAYER
 			rts
-			
+
 rshift3:	; rshift 3 byte value (X = number of shifts)
 			lsr value+1
 			ror value
@@ -449,7 +514,7 @@ rshift3:	; rshift 3 byte value (X = number of shifts)
 			dex
 			bne rshift3
 			rts
-			
+
 rshift2:
 			ldx #4	; we're always >>4 in this phase
 :			lsr value
@@ -475,7 +540,7 @@ add_step:
 .endproc
 
 ;............
-; stopmusic : 
+; stopmusic :
 ; ===========================================================================
 ; Arguments: (none)
 ; Returns: (none)
@@ -497,7 +562,7 @@ YMloop:		ror zsm_chanmask
 			bcc nextYM
 			YM_BUSY_WAIT
 			ldy #08
-			sty YM_reg		
+			sty YM_reg
 			nop
 			stx	YM_data		; send KeyUP for voice
 			YM_BUSY_WAIT
@@ -509,7 +574,7 @@ nextYM:		inx
 			cpx	#8
 			bne YMloop
 			stz zsm_chanmask
-			
+
 			; set up VERA data0 port to sweep through the PSG volumes.
 			VERA_SELECT_PSG -3 ; -3 = step amount of -4
 			; VERA_SELECT_PSG macro sets step=0, we need step=4
@@ -534,9 +599,9 @@ nextPSG:					; changing anything.
 			bne PSGloop1
 			dey
 			bne PSGloop2
-			
+
 			; music channels are now silenced.
-			
+
 			jmp clear_song_pointers
 .endproc
 
@@ -563,7 +628,7 @@ nextPSG:					; changing anything.
 			lda delay
 			beq noop
 			; delay >0. Decrement, and if now 0, then play, else exit.
-			dec	
+			dec
 			sta delay
 			bne noop
 			; bank in the song data
@@ -587,7 +652,7 @@ nextnote:
 			bmi delayframe  	;
 								; 2
 			bit #$40			; 2
-			bne YMPCM			; 
+			bne YMPCM			;
 playPSG:						; 2
 			ora #$c0			; faster way to add $C0 to a value known to be < $c0. :)
 ;			clc					; 2
@@ -604,7 +669,7 @@ YMPCM:							; 3
 			beq CallHandler
 playYM:							; 2
 			tax					; 2		; X now holds number of reg/val pairs to process
-nextYM:	
+nextYM:
 			jsr nextdata
 			dex
 			bmi nextnote	; note: the most YM writes is 63, so this is a safe test
@@ -781,7 +846,7 @@ done:		rts
 			stx ZSM_VECTOR_done+1
 			cli
 			rts
-.endproc		
+.endproc
 
 .proc set_callback: near
 			sei
