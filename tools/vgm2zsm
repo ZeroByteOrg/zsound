@@ -3,21 +3,21 @@
 
 /*
  * This tool is used to convert VGM files into ZSM files.
- * 
+ *
  * First - Apologies for the spaghetti code. This tool was originally
  * written to simply extract 0x54 commands from a VGM and write out
  * a binary stream for testing the YM2151 on 8MHz system bus speeds with
  * Kevin on prototype board 1.
- * 
+ *
  * It was not written to be extended for additional functionality. I just
  * shoehorned it in there, and in ever-increasingly sloppy fashion which
  * causes lots of strange logic. It's best not to try to grok() this code.
  * Just use it and move along. (Nothing to see here)
- * 
+ *
  * Usage - the script has two command-line options:
  * 	-4: this flag causes the script to generate YM notes based on a
  * 		4MHz clock (r38 and older emulator versions).
- * 
+ *
  *  -b: "black tiger mode" - Most YM2203 tunes seem to use a regime of
  *		the clock scaler registers that use this clock speed conversion.
  * 		The YM2203 support was originally written in for the City Connection
@@ -25,7 +25,7 @@
  * 		figured out how to properly interpret those, I just added this switch
  * 		with the intent of fixing the clock speed interpretation in the actual
  * 		code. I haven't done this. It's manual. Sorry.
- * 
+ *
  * -f: KF mode disabled
  * 		By default, when translating from OPNx chips, a KC and a KF value are
  * 		generated for best accuracy. This is needed for tunes that do things like
@@ -35,20 +35,22 @@
  * 		of KF. However, the KF writes consume more space and X16 resources to process,
  * 		so if you think they aren't needed on a particular tune, -f disables these
  * 		and the resulting VGM will only have semitone-accurate note reproduction.
- * 
+ *
  * -t<rate>: tick rate (Hz)
  * 		ZSM defaults to 60Hz per tick timing. This option specifies a different
  * 		tick interval in Hz. The minimum value is 60, the maximum value is 65535
- * 
+ *
  * I ultimately intend to rewrite this tool using Python, and when doing so, the
  * new script should be much more extensible than this one was. Oh well. Too bad
  * I'm not a Python guy though....
- * 
+ *
 */
 
 $rest_index = null;
 $opts = getopt('d4bft::', array('ymdac'), $rest_index);
 $filenames = array_slice($argv, $rest_index);
+
+define("ZSM_VERSION",1);
 
 if (isset($opts['t']) && ($opts['t'] !== false)) {
 	if (is_numeric($opts['t']) && ($opts['t'] <= 0xffff) && ($opts['t'] >= 60))
@@ -98,8 +100,8 @@ $note = array( // values for when YM2151 is at 3.5MHz
 
 // LUT for converting AY volume register into VERA PSG equivalent
 $PSGvolume = array( 0,1,2,3,4,8,12,16,24,28,34,40,45,51,58,63);
-		
-		
+
+
 // from fmtoy, 2203 uses this to make the notes:
 //    uint8_t octave = (69 + 12 * log2(pitch / 440.0)) / 12 - 1;
 //    uint16_t fnum = (144 * pitch * (1 << 19) / channel->chip->clock) / (1 << (octave - 1));
@@ -107,7 +109,7 @@ $PSGvolume = array( 0,1,2,3,4,8,12,16,24,28,34,40,45,51,58,63);
 function DEBUG($str,...$vars) {
 	global $opts;
 	if (isset($opts['d'])) print vsprintf($str,$vars);
-	
+
 }
 
 function read_uint32($i) {
@@ -143,7 +145,7 @@ function snfnum($ayfnum) {
 
 function getcode_kf ($freq) {
 	global $note;
-	
+
 	// handle $freq < min or >= max first.
 	if ($freq < freq(0,0))
 		return(0);
@@ -299,7 +301,7 @@ function writepause() {
 
 function init_shadow() {
 	global $shadows;
-	
+
 	for ($i = 0 ; $i < 256 ; $i++) {
 		$shadows[1][$i] = 0x100; // seed with impossible values
 		$shadows[2][$i] = 0x100;
@@ -315,7 +317,7 @@ function shadow($c, $reg, $val) {
 	// value in $reg. Returns FALSE if no change. This will reduce, but
 	// not eliminate redundant writes. Patterns like X Y Y Z will be
 	// reduced to X Y Z - better than nothing....
-	
+
 	global $shadows;
 	if ($c == 1) {
 		switch ($reg) {
@@ -337,7 +339,7 @@ function shadow($c, $reg, $val) {
 function generate($c, $a, $d) {
 	// meat and potatoes of the script. Send raw reg/val pairs to this
 	// function which converts them into ZSM format and buffers the ZSM
-	// data in $songdata. 
+	// data in $songdata.
 	global $opts;
 	global $channelsused;
 	global $songdata;
@@ -385,7 +387,7 @@ DEBUG("ZSM WRITE: 0x%02x 0x%02x\n",$a,$d);
 	default:
 		printf("Illegal command ID %d written at VGM offset 0x%06x\n",$c,$i);
 		exit;
-		break;	
+		break;
 	}
 }
 
@@ -395,10 +397,10 @@ function wait($t)
 	global $songdata;
 	global $ymbuffer;
 	global $pcmstreams;
-	
+
 	$ticks += $t;
 	if (intdiv($ticks,TICKSPERFRAME) > 0) {flushymbuffer();}
-	
+
 	foreach ($pcmstreams as $stream)
 	{
 		$stream($t);
@@ -409,18 +411,16 @@ function out_zsm($ofile)
 {
 	global $songdata;
 	global $channelsused;
-	$songdata[6] = $channelsused['ym'];
-	$songdata[7] = $channelsused['psg'] & 0xff;
-	$songdata[8] = $channelsused['psg'] >> 8;
-	$songdata[9] = ZSMTICKRATE & 0xff; 
-	$songdata[10] = (ZSMTICKRATE >> 8) & 0xff;
+	$songdata[0x09] = $channelsused['ym'];
+	$songdata[0x0a] = $channelsused['psg'] & 0xff;
+	$songdata[0x0b] = $channelsused['psg'] >> 8;
+	$songdata[0x0c] = ZSMTICKRATE & 0xff;
+	$songdata[0x0d] = (ZSMTICKRATE >> 8) & 0xff;
 	DEBUG("YM channel mask: %s\n", tobin($channelsused['ym']));
 	DEBUG("PSG channel mask: %s\n", tobin($channelsused['psg']));
 	$of = fopen($ofile, "w+b");
-	fwrite($of,"zm");
 	fwrite($of,pack('C*',...$songdata));
 	fclose($of);
-	
 }
 
 function update_ymDAC($numticks)
@@ -435,7 +435,7 @@ function update_ymDAC($numticks)
 function log_pcm($numticks)
 {
 	global $pcmstreams;
-	
+
 	foreach ($pcmstreams as $stream)
 	{
 		$stream($numticks);
@@ -449,11 +449,11 @@ function translate_sn($d)
 	global $sninitialized;
 	global $psgshadow;
 	global $i;
-	
+
 	$voice = 0;
 	$value = 0;
 	$freq = 0;
-	
+
 	if ($sninitialized === false) {
 		generate(2,3,0x3f);
 		generate(2,7,0x3f);
@@ -465,7 +465,7 @@ function translate_sn($d)
 		generate(2,14,0);
 		$sninitialized = true;
 	}
-	
+
 	// Ti SN76489 PSG uses a single byte write
 	// The byte contains either a "register select" + data (bits 0-3)
 	// or the 6 MSB of a tone setting.
@@ -530,7 +530,7 @@ function translate_sn($d)
 		}
 		// doing a nOP for voice 3 (noise generator)
 	}
-		
+
 }
 
 function translate_ay($a, $d, $chip)
@@ -538,7 +538,7 @@ function translate_ay($a, $d, $chip)
 	global $ayshadow;
 	global $psgshadow;
 	global $PSGvolume;
-	
+
 	// Registers:
 	// 0, 2, 4 = fnum (A,B,C - 12-bit)
 	// 6 = noise period (5-bit)
@@ -673,7 +673,7 @@ function translate_opn($a, $d, $base, $ofst)
 
 	$a0 = $a;
 	$d0 = $d;
-	
+
 //if ($a >= 0x20) { return; }
 	switch ($a>>4) {
 	case 0: // regs 0x00-0x1F are for the SSG portion
@@ -727,7 +727,7 @@ function translate_opn($a, $d, $base, $ofst)
 			return;
 		}
 		break;
-	case 3: // DT1 + MUL	
+	case 3: // DT1 + MUL
 	case 4: // TL	(same)
 	case 5: // RS + AR
 	case 6: // AM + D1R
@@ -754,7 +754,7 @@ function translate_opn($a, $d, $base, $ofst)
 	case 0xA:
 		// A0-A2 = Fnum LSB
 		// A4-A6 = Block + Freq MSB
-		// 
+		//
 		$cha = $a & 3;
 		if ($cha == 3) {
 			printf("invalid channel write 0x%02x\n",$a);
@@ -835,7 +835,7 @@ function translate_opn($a, $d, $base, $ofst)
 function getstream($tag, $handler)
 {
 	global $pcmstreams;
-	
+
 	$filename = OUTFILENAME . $tag . '.pcm';
 	$f = fopen($filename, "w+b");
 	if ($f !== false)
@@ -910,8 +910,11 @@ $longest=0;
 $maxatbyte=0;
 
 define ("HDRSIZE",16);
-//$songdata=array(0,0,0xff);
 $songdata=array_fill(0,HDRSIZE,0); // create an array 0..HDRSIZE of zeros
+$songdata[0] = 0x7a; // z
+$songdata[1] = 0x6d; // m
+$songdata[2] = ZSM_VERSION;
+
 $ymbuffer=array();
 
 $channelsused=array('ym'=>0, 'psg'=>0); // bitflags for channels used by the VGM
@@ -1032,7 +1035,7 @@ while ($i < EOF) {
 		break;
 	case 0x2a: // DAC data write ; also done by VGM command 0x8n which uses the DAC data block. (assuming there's only one?)
 		$ymDAC['value'] = $d;
-		$ignore = true;	// don't send to translate_opn() 
+		$ignore = true;	// don't send to translate_opn()
 		break;
 	case 0x2b: // DAC enable
 		$want_dac = (($d & 0x80) == 0x80) && isset($opts["ymdac"]);
@@ -1109,7 +1112,7 @@ while ($i < EOF) {
 		$ymDAC['size'] = $datasize;
 		$ymDAC['ptr']  = $offset; // seems like a decent default to me....
 	}
-	
+
 	break;
   case 0x4F:	// Sega GameGear PCM stereo write (one-byte operand)
 	$i+=1; 		// (skip)
@@ -1217,12 +1220,9 @@ printf ("[%06x] : Unknown command (%2x)\n",$i-1,$cmd);
 	  writepause();
 	  // note: the loop offset pointer in the header is relative to start-of-file, not start-of-data
 	  $offset = $bytes+HDRSIZE;
-	  $songdata[0] = $offset & 0xff;
-	  $songdata[1] = ($offset >> 8) & 0xff;
-	  $songdata[2] = ($offset >> 16) & 0xff;
-	  //$songdata[2] = intdiv(($bytes+HDRSIZE),0x2000); // how many 8K banks into the tune is the loop point
-	  //$songdata[0] = (($bytes+HDRSIZE) % 0x2000) & 0xff;
-	  //$songdata[1] = ((($bytes+HDRSIZE) % 0x2000) >> 8) & 0xff;
+	  $songdata[0x03] = $offset & 0xff;
+	  $songdata[0x04] = ($offset >> 8) & 0xff;
+	  $songdata[0x05] = ($offset >> 16) & 0xff;
   }
 };
 flushymbuffer(); // call separately just in case there is a buffer and not enough time remaining for a final delay command...

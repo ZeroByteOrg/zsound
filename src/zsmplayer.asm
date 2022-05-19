@@ -246,6 +246,20 @@ dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 			lda zsm+ZSM_HEADER::magic+1
 			cmp #$6d ; m
 			bne die
+			; check if the loop offset value >= header size
+			; skip calculate_loop and just write $0000:$00 into loop_pointer
+			; this seems kludgy and wasteful but is currently necessary
+			; TODO - see if there's a more efficient thing to do.
+			lda loop_pointer + 2
+			bne loop_exists
+			lda loop_pointer + 1
+			bne loop_exists
+			lda loop_pointer
+			cmp #$10
+			bcs loop_exists
+			stz loop_pointer
+			bra update_zsm
+loop_exists:
 			jsr calculate_loop
 			bcs die
 update_zsm:
@@ -264,6 +278,7 @@ update_zsm:
 			jsr nextdata ; skip the magic header
 			lda #$ff
 			sta (data)
+			sta zsm+ZSM_HEADER::version
 			jsr nextdata
 			lda loop_pointer+SONGPTR::addr
 			sta (data)
