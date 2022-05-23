@@ -1,0 +1,107 @@
+#!/usr/bin/php
+<?php
+define("FILENAME","EMPTY.ZSM");
+$zsm = array();
+$handle = fopen(FILENAME, "rb");
+$fsize = filesize(FILENAME);
+$zsm = unpack("C*",fread($handle, $fsize));
+fclose($handle);
+
+$globalreg = array (
+	"Undefined Register",
+	"Test Register",
+	"Undefined Register",
+	"Undefined Register",
+	"Undefined Register",
+	"Undefined Register",
+	"Undefined Register",
+	"Undefined Register",
+	"KeyON/OFF",
+	"Undefined Register",
+	"Undefined Register",
+	"Undefined Register",
+	"Undefined Register",
+	"Undefined Register",
+	"Undefined Register",
+	"Noise Control",
+	"Clock A lo",
+	"Clock A hi",
+	"Clock B",
+	"Undefined Register",
+	"CTRL Register",
+	"Undefined Register",
+	"Undefined Register",
+	"Undefined Register",
+	"LFO Frequency",
+	"PMD/AMD",
+	"Undefined Register",
+	"CT / LFO WaveForm",
+	"Undefined Register",
+	"Undefined Register",
+	"Undefined Register",
+	"Undefined Register"
+);
+
+$chanreg = array (
+	"FBCON",
+	"KC",
+	"KF",
+	"PMS AMS"
+);
+
+$opreg = array (
+	"globals",
+	"channels",
+	"DT1 MUL",
+	"TL",
+	"KS AR",
+	"AMSen D1R",
+	"DT2 D2R",
+	"D1L RR"
+);
+
+$i=17;
+while ($i < sizeof($zsm)) {
+  $cmd = $zsm[$i];
+  switch (($cmd & 0xc0)>>6) {
+  case 0:
+    $i+=2;
+    break;
+  case 2:
+  case 3:
+    printf("delay %d\n",$cmd & 0x7f);
+    $i++;
+    break;
+  default:
+  	$i++;
+  	$n = $cmd & 0x3f;
+  	printf("YM write x%02x:\n",$n);
+  	while ($n > 0) {
+	  	$r = $zsm[$i];
+	  	$v = $zsm[$i+1];
+		$i += 2;
+	  	printf (" - %02x %02x",$r,$v);
+		printf (" :: %s\n",decode($r,$v));
+	  	$n--;
+  	}
+  }
+}
+
+function decode($r,$v) {
+	global $globalreg;
+	global $chanreg;
+	global $opreg;
+	$s = "";
+	if ($r == 0x08) $s = sprintf("chan %d : %s = %02x",$v&0x07,$globalreg[8],$v);
+	else if ($r < 0x20)  $s = sprintf("%s = %02x",$globalreg[$r],$v);
+	else {
+	  $chan = $r & 0x07;
+	  $op = ($r >> 3) & 0x03;
+	  $range = $r >> 5;
+	  if ($r < 0x40)  $s = sprintf("chan %d : %s = %02x",$chan,$chanreg[$op],$v);
+	  else $s = sprintf("chan %d op %d : %s = %02x",$chan,$op,$opreg[$range],$v);
+	}
+	return $s;
+}
+
+?>
