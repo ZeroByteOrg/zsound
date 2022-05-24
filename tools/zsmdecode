@@ -1,11 +1,22 @@
 #!/usr/bin/php
 <?php
-define("FILENAME","EMPTY.ZSM");
+if (!isset($argv['1'])) {
+	printf("USAGE: %s filename\n\n",$argv['1']);
+	exit(1);
+}
+define("FILENAME",$argv['1']);
+$err = error_reporting();
+error_reporting(~E_ALL);
 $zsm = array();
 $handle = fopen(FILENAME, "rb");
 $fsize = filesize(FILENAME);
-$zsm = unpack("C*",fread($handle, $fsize));
+$zsm = array_values(unpack("C*",fread($handle, $fsize)));
 fclose($handle);
+if (sizeof($zsm)==0) {
+	print "Error reading input file " . FILENAME . "\n";
+	exit(1);
+}
+error_reporting($err);
 
 $globalreg = array (
 	"Undefined Register",
@@ -33,7 +44,7 @@ $globalreg = array (
 	"Undefined Register",
 	"Undefined Register",
 	"LFO Frequency",
-	"PMD/AMD",
+	"LFO PMD/AMD",
 	"Undefined Register",
 	"CT / LFO WaveForm",
 	"Undefined Register",
@@ -60,16 +71,77 @@ $opreg = array (
 	"D1L RR"
 );
 
-$i=17;
+define("HDRSTRING","%16s : %s\n");
+define("DIVIDER","------------------------------------------------------------------\n");
+
+printf("Decoding %s:\n", FILENAME);
+printf(DIVIDER);
+$s = "";
+foreach (range(0,15) as $i) $s = $s . sprintf("%02x ",$zsm[$i]);
+$s = ltrim($s);
+printf(HDRSTRING,"","'zm'  v  loop     pcm      fm psg   rate  pad");
+printf(HDRSTRING,"","~~~~~ ~~ ~~~~~~~~ ~~~~~~~~ ~~ ~~~~~ ~~~~~ ~~~~~");
+printf(HDRSTRING,"Raw Header",$s);
+printf(HDRSTRING,"","");
+$value = $zsm[3] + ($zsm[4] << 8) + ($zsm[5] << 16);
+$loopoffset = $value;
+if ($value == 0) $s = "No Loop";
+else if ($value < 16) $s = "No Loop (but should be set to zero)";
+else $s = sprintf("0x%02x (%d bytes)",$value,$value);
+printf(HDRSTRING,"Loop Offset",$s);
+$value = $zsm[6] + ($zsm[7] << 8) + ($zsm[8] << 16);
+if ($value == 0) $s = "No PCM";
+else if ($value < 16) $s = "Invalid nonzero value!! (less than 16)";
+else $s = sprintf("0x%02x (%d bytes)",$value,$value);
+printf(HDRSTRING,"PCM Offset",$s);
+$a = array();
+$value=0;
+foreach (range(0,7) as $i)
+  if (($zsm[9] >> $i) & 1) {
+		array_push($a,"*");
+		$value++;
+	}
+	else {
+		array_push($a,".");
+	}
+$s = sprintf("%2d voices used",$value);
+$s = $s . ": " . implode(' ',$a);
+printf(HDRSTRING,"",sprintf("%16s%s","","0             7"));
+printf(HDRSTRING,"FM Channel Mask",$s);
+$a = array();
+$value=0;
+$x = $zsm[10] + ($zsm[11] << 8);
+foreach (range(0,15) as $i)
+  if (($x >> $i) & 1) {
+		array_push($a,"*");
+		$value++;
+	}
+	else {
+		array_push($a,".");
+	}
+$s = sprintf("%2d voices used",$value);
+$s = $s . ": " . implode(' ',$a);
+printf(HDRSTRING,"PSG Channel Mask",$s);
+printf(HDRSTRING,"",sprintf("%16s%s","","0                             F"));
+$value = $zsm[12] + ($zsm[13] << 8);
+printf(HDRSTRING,"Tick Rate",sprintf("%d Hz",$value));
+printf(DIVIDER);
+
+// begin ZSM data stream
+$i=16;
 while ($i < sizeof($zsm)) {
   $cmd = $zsm[$i];
+	if ($i == $loopoffset)
+	  print "---------------------------------- Loop Point ----\n";
   switch (($cmd & 0xc0)>>6) {
   case 0:
+	  printf ("PSG write: reg=%02x val=%02x\n",$cmd,$zsm[$i+1]);
     $i+=2;
     break;
   case 2:
   case 3:
-    printf("delay %d\n",$cmd & 0x7f);
+		if($cmd == 0x80) print "EOF\n";
+		else printf("delay %d\n",$cmd & 0x7f);
     $i++;
     break;
   default:
