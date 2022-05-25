@@ -12,10 +12,11 @@ Thus, zSound should supply data format specifications, a reference playback
 engine and API, and a basic tool set for creation of audio assets, or the
 ability to import audio from other existing ecosystems such as VGM, IMF, etc.
 
-Thus far, we have created ZSM, ZFX, and YMP formats:
+Thus far, we have created ZSM, ZFX, ZCM, and YMP formats:
 ZSM is a pre-generated stream of raw instructions for the YM2151, VERA PSG,
     and VERA PCM sound devicesintended to be played back as music.
 ZFX is a pair of sound effects data formats for FM and PSG sounds.
+ZCM is a stream of PCM sample data with a header describing the size/parameters.
 YMP is a block of the raw bytes of an FM instrument patch
 
 See the documentation for full descriptions of the data formats.
@@ -32,7 +33,7 @@ zsound.lib:
 		- Loop/repeat behavior control routines
 		- Custom synchronization event channel support (untested)
 		- PCM track support is not yet available, but is planned
-		
+
 	- PCM player:
 		- Playback of any PCM quality, all the way up to 48Khz 16bit stereo
 		- Simple one-shot trigger API - pass pointer to digi parameter table
@@ -40,13 +41,13 @@ zsound.lib:
 			-granular control API to set individual PCM parameters
 			-callbacks to allow creating behaviors such as looping
 			 digis or chaining clips together
-	
+
 	- ZFX player:
 		- Initial implementation. Allows simple one-shot triggering of sfx playback
-	
+
 	- Raw API:
 		- load FM patch into a voice of the YM2151
-	
+
 Tools:
 	- vgm2zsm:
 		- PHP-based script that converts VGM music data into ZSM data
@@ -80,14 +81,19 @@ Tools:
 		  * NES APU
 		  * POKEY
 		  * OPL2 (AdLib/SoundBlaster)
-		  
-	- DMP instrument conversion tool
+
+	- dmp2x16: instrument conversion tool
 		- Converts Deflemask FM instruments into various output formats:
 		  * BASIC code to POKE the values into any chosen voice
 		  * C header format (bytes are in YMP order)
 		  * Assembly .byte format
 		  * Binary (YMP) format
 		- Requires PHP interpreter
+
+  - raw2zcm: Places ZCM header onto a raw PCM file
+
+  - zsmdecode
+    - simple tool that decodes a ZSM file into human-readable text
 
 ------------------------------------------------------------------
 
@@ -104,7 +110,7 @@ Planned features:
 zsound.lib:
 	ZSM player:
 		- PCM track support
-		
+
 	SFX API:
 		- dynamic SFX channel selection
 		- non-destructive music channel pre-emption
@@ -114,7 +120,7 @@ zsound.lib:
 		  using commands like play_note(voice,freq,volume) etc
   		- volume controls (per channel and music level)
 		- ZSM/ZFX file loading routines
-		
+
 Tool chain:
 	- utility for generating ZFX sound effects
 	- utility to rip FM instruments from VGM tunes
