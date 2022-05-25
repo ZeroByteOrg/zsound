@@ -26,30 +26,6 @@
 	; not setting low byte - only pointing at the PSG page of VRAM
 .endmacro
 
-; Since this project is currently designed to build both r38 and r39 compatible
-; targets, the individual sources need to export/import different symbols.
-; These macros help keep the import/export lists in the various sources easy-to-read.
-
-; EXPORT_TAGGED essentially exports symbol as symbol+rev: foo --> foo38
-; IMPORT_TAGGED does the inverse: foo38 --> foo
-
-.macro EXPORT_TAGGED symbol
-	.ident(.sprintf("%s%d",symbol,X16_VERSION)) := .ident(.sprintf("%s",symbol))
-	.export	.ident(.sprintf("%s%d",symbol,X16_VERSION))
-.endmacro
-
-.macro IMPORT_TAGGED symbol
-	;import revision-suffixed symbol and alias it with a non-suffixed symbol
-	.import	.ident(.sprintf("%s%d",symbol,X16_VERSION))
-	.ident(.sprintf("%s",symbol))	:=	.ident(.sprintf("%s%d",symbol,X16_VERSION))
-.endmacro
-
-.macro IMPORTZP_TAGGED symbol
-	;import revision-suffixed symbol and alias it with a non-suffixed symbol
-	.importzp .ident(.sprintf("%s%d",symbol,X16_VERSION))
-	.ident(.sprintf("%s",symbol))	:=	.ident(.sprintf("%s%d",symbol,X16_VERSION))
-.endmacro
-
 .macro HIPTR_add_word _src, _dst
 	; expects .XY as the word to add
 	; TODO: assembler directives to check that _src and _dst don't overlap

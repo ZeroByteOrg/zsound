@@ -1,9 +1,9 @@
-; x16.inc by SlithyMatt - slightly modified for multi-revision support
+; x16.inc by SlithyMatt
 .include "x16.inc"
 .include "zsm.inc"
 .include "macros.inc"
 
-EXPORT_TAGGED "helloworld"
+.export helloworld
 
 ; ---------------------------------------------------------------------------
 ; Hello World:	prints a message to the screen.
@@ -31,10 +31,6 @@ done:	RTS                    ; Return to caller
 .segment "RODATA"
 
 str_hello:
-.if X16_VERSION = 38
-	.byte	"built for x16emu r38", 0
-.else
-	.byte	"built for r39 / real hardware", 0
-.endif
+	.byte	"zsound ", 0
 strlen	= (* - str_hello)
 string_length:	.byte	strlen

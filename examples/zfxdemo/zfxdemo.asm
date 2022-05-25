@@ -1,7 +1,3 @@
-.ifndef REV
-	REV=39
-.endif
-
 .include "x16.inc"
 .include "../../inc/zfxplayer.inc"
 
@@ -12,7 +8,7 @@
 
 .segment "STARTUP"
 	jsr init		; init ZFX player
-	
+
 	; check whether IRQ handler is already installed
 	lda IRQVec
 	cmp #<irq
@@ -39,7 +35,7 @@ go:
 	ldy #>ZFX_psgtest
 	ldx #8
 	jsr play
-	
+
 	; wait 64 frames for the sound to finish playing
 	ldx #$40
 delay:
@@ -60,7 +56,7 @@ delay:
 	ldx #0
 	jsr play
 	rts
-	
+
 .segment "CODE"
 irq:
 	jsr update

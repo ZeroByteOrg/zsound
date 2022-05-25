@@ -21,7 +21,7 @@
 .include "x16.inc"			; Import X16-related symbols
 .include "zsmplayer.inc"	; use the zsound zsm player module
 
-IMPORT_TAGGED "helloworld"	; REALLY REALLY need to move this OUT of the player library - lol.
+.import helloworld	; REALLY REALLY need to move this OUT of the player library - lol.
 
 ZSM_address := $a000		; memory address to load song (should be in HIRAM bank window)
 ZSM_bank 	= 2			; defines starting bank in HIRAM
@@ -30,24 +30,14 @@ BAR_VISIBLE_MODE	= $31
 BAR_HIDDEN_MODE		= $11
 RASTER_LINE_TOP		= 0	; first visible row of pixels?
 
-
-.ifndef X16_VERSION
-	.error	"x16.inc must not have been included successfully."
-.endif
-
-.segment "ONCE"	; current ca65 linker config file for cx16 requires this segment
-				; to set the LOAD address as $801 and to emit the PRG header
-				; and BASIC stub for SYS $80D
+.segment "ONCE"
+; current ca65 linker config file for cx16 requires this segment
+; to set the LOAD address as $801 and to emit the PRG header
+; and BASIC stub for SYS $80D
 
 .segment "RODATA"
 
-; Choose the ZSM whith the proper pitch tuning for the revision being built.
-; x16.inc sets X16_VERSION to 39 by default in this project's copy...
-.if X16_VERSION = 38
-	filename:	.byte "bgm38.zsm"
-.else
-	filename:	.byte "bgm39.zsm"
-.endif
+filename:	.byte "bgm.zsm"
 filename_len = (* - filename)
 
 ; -----------------------------------------------------------------

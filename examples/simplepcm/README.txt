@@ -11,18 +11,15 @@ file.
 ------------------------------------------------------------------
 
 Building:
-You may use the included build.sh script - specify the emulator REV on the command line.
-E.g.:
-./build.sh 39
+You may use the included build.sh script
+./build.sh
 
 Manual build command:
-cl65 -t cx16 --asm-define REV={38|39} -L ../../lib --asm-include-dir ../../inc -o PCMPLAYER.PRG pcmplayer.asm zsound.lib
+cl65 -t cx16 -L ../../lib --asm-include-dir ../../inc -o PCMPLAYER.PRG pcmplayer.asm zsound.lib
 
 Running:
 
-Be sure that the PRG is being loaded and run from the same directory where TEST.ZCM files are located.
+Be sure that the PRG is being loaded and run from the same directory where TEST.ZCM is located.
 
 NOTE: Large digital sound files will exceed the default 512K of memory that the
       emulator uses. Be sure to use -ram 2048 when playing large files!
-
-

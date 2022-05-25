@@ -12,7 +12,7 @@
 ;	addr		.addr
 ;	bank		.byte
 ;	size		.word	; 24bit digi size (in bytes)
-;	sizehi		.byte	; ...
+;	sizehi	.byte	; ...
 ;	cfg			.byte	; VERA_audio_ctrl value
 ;	rate		.byte	; VERA_audio_rate
 ;.endstruct
@@ -24,19 +24,14 @@
 .include "x16.inc"			; Import X16-related symbols
 .include "pcmplayer.inc"	; use the zsound pcm player module
 
-IMPORT_TAGGED "helloworld"	; REALLY REALLY need to move this OUT of the player library - lol.
+.import helloworld	; REALLY REALLY need to move this OUT of the player library - lol.
 
-digi		= $A000			; load point for ZCM file
-digi_bank 	= 2				; defines starting bank in HIRAM
+digi			= $A000		; load point for ZCM file
+digi_bank = 2				; defines starting bank in HIRAM
 
 BAR_VISIBLE_MODE	= $31
 BAR_HIDDEN_MODE		= $11
 RASTER_LINE_TOP		= 0	; first visible row of pixels?
-
-
-.ifndef X16_VERSION
-	.error	"x16.inc must not have been included successfully."
-.endif
 
 .segment "ONCE"	; current ca65 linker config file for cx16 requires this segment
 				; to set the LOAD address as $801 and to emit the PRG header
@@ -51,7 +46,7 @@ diginame_len = (* - diginame)
 ; PCM parameter table to pass to start_digi
 
 
-	
+
 ; -----------------------------------------------------------------
 
 .segment "BSS"
@@ -93,7 +88,7 @@ main:		;wai					; save power :)
 			lda	#BAR_HIDDEN_MODE
 			sta	VERA_dc_video	; hide L1 to end the "rasterbar"
 			bra main
-			
+
 trigger:
 			ldx #<digi		; load address of PCM parameter table "digi"
 			ldy #>digi		; into .XY
@@ -104,14 +99,14 @@ trigger:
 ;			jsr play_pcm
 ;			jsr play_pcm
 			rts
-			
+
 ; -----------------------------------------------------------------
 
 ; SWAPLAYER: Switch to using L0 as the active screen. Clear space at VRAM $4000
 ;				to use as the L1 tilemap
 
 .segment	"CODE"
-			
+
 .proc swaplayer: near
 			stz VERA_ctrl			; use data port=0 and DCSEL=0
 			VERA_SET_ADDR	$4000,1	; vram $4000, stride 1
@@ -125,7 +120,7 @@ nextbyte:	sta	VERA_data0
 			bne	nextbyte
 			dey
 			bne	nextbyte			; next page of VRAM
-			
+
 			; now copy L1 config to L0
 			ldx #6
 nextattr:	lda VERA_L1_config,X
@@ -144,12 +139,12 @@ nextattr:	lda VERA_L1_config,X
 ; -----------------------------------------------------------------
 
 ; DRAWMETER: Draw the performance bar on the screen to L1
-;		
+;
 
 .segment	"CODE"
-			
+
 .proc drawmeter: near
-			
+
 COL = 76
 			stz VERA_ctrl	; use data port 0, DCSEL=0
 			VERA_SET_ADDR	($4000 + 2*COL), 9	; stride down on screen
@@ -177,7 +172,7 @@ COL = 76
 			jsr	drawcolumn
 			stz VERA_ctrl	; put data port selection back to data0 for Kernal's benefit
 			rts				; CHROUT fails if it's set to data1 (helloworld uses CHROUT)
-			
+
 drawcolumn:
 			lda #$66		; checkerboard PETSCII character
 			ldx #$A2		; red on orange
@@ -213,14 +208,14 @@ start:
 			; prepare for call to SETLFS Kernal routine
 			lda #0	; logical file id 0
 			ldx	#8	; device 8
-			ldy #0	; 0 = no command
+			ldy #2	; 2 = headerless load
 			jsr	SETLFS
 			; load digi sound data
 			lda	#0		; 0=load, 1=verify, 2|3 = VLOAD to VRAM bank0/bank1
 			ldx	#<digi
 			ldy #>digi
 			jsr LOAD
-			
+
 			lda #'a'
 			jsr CHROUT
 
@@ -233,7 +228,7 @@ start:
 			lda #>(digi + .sizeof(DIGITAB))
 			sta digi + DIGITAB::addr+1
 
-			;  ==== Install IRQ handler to process music once per frame ====
+			;  ==== Install IRQ handler to process digi playback once per frame ====
 			;
 			;  Assumes default configuration:
 			;  VERA VSYNC IRQ is the only active IRQ source
@@ -255,7 +250,7 @@ start:
 			sta VERA_irqline_l
 			lda #3				; 3=VSYNC and LINE, IRQ line_hi bit=0
 			sta VERA_ien
-			
+
 			jsr	swaplayer		; get the screen elements ready for the
 			jsr	drawmeter		; perf meter bar
 

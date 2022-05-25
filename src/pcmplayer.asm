@@ -1,11 +1,11 @@
 .include "x16.inc"
 .include "macros.inc"
 
-EXPORT_TAGGED "init_pcm"
-EXPORT_TAGGED "start_digi"
-EXPORT_TAGGED "play_pcm"
-EXPORT_TAGGED "stop_pcm"
-EXPORT_TAGGED "set_pcm_volume"
+.export init_pcm
+.export start_digi
+.export play_pcm
+.export stop_pcm
+.export set_pcm_volume
 
 ; bare minimum info needed in a data file: VERA_CTRL, RATE, length
 ; digi parameter table also needs to store the location of the data
@@ -13,15 +13,15 @@ EXPORT_TAGGED "set_pcm_volume"
 	addr		.addr
 	bank		.byte
 	size		.word	; 24bit digi size
-	sizehi		.byte	; ...
+	sizehi	.byte	; ...
 	cfg			.byte	; VERA_audio_ctrl value
 	rate		.byte	; VERA_audio_rate
 .endstruct
 DIGITAB_LAST		= DIGITAB::rate
 
 .struct PCMSTATE
-	state		.byte
-	digi		.tag	DIGITAB
+	state			.byte
+	digi			.tag	DIGITAB
 	byterate	.word	; (computed whenever playback rate is set)
 	halfrate	.word	; Speed to use when AFLOW is clear
 .endstruct
@@ -30,7 +30,7 @@ DIGITAB_LAST		= DIGITAB::rate
 ; TODO: these ZP addresses aren't permanent storage. Convert to using
 ; other temporary space in ZP and not hogging bytes just for this player.
 .segment "ZEROPAGE"
-pcm_pages:		.res 1
+pcm_pages:	.res 1
 zp_tmp:			.res 2
 zp_tmp2:		.res 2
 
@@ -84,7 +84,7 @@ loop:
 	sta digi + PCMSTATE::digi,y
 	dey
 	bpl loop
-	
+
 	lda digi + PCMSTATE::digi + DIGITAB::cfg
 	and #$30
 	sta digi + PCMSTATE::digi + DIGITAB::cfg
@@ -128,13 +128,13 @@ loop:
 	sty tmp_hi
 	ldy pcmrate_slow,x
 	sty tmp_lo
-	
+
 	stz halfrate+1
 	stz fullrate+1
-	
+
 	; See if value needs to be div by 2 or 4 due to PCM formatting:
 	; LUT = 16bit stereo rate. /2 if mono and /2 if 8bit.
-	; Value needs to <<4 if unaltered, less if one or more /2s 
+	; Value needs to <<4 if unaltered, less if one or more /2s
 	ldx #2
 check_16bit:
 	bit #$10 ; check the 16bit format flag in .A
@@ -180,7 +180,7 @@ bad_rate:
 	nextstate	= zp_tmp2
 
 	lda	active_digi		; quick check whether digi player is active
-	
+
 	beq noop
 	bmi :+
 	dec active_digi
@@ -240,7 +240,7 @@ activate_playback:
 	stx VERA_audio_rate
 done:
 	rts
-	
+
 .endproc
 ;================================================[ play_pcm ]=====^
 
@@ -255,17 +255,17 @@ done:
 ;
 ; Since this routine assumes everything is set up properly, and
 ; does NO sanity or safety checking, it should not be exposed to
-; the client program. 
+; the client program.
 .segment "CODE"
 .proc load_fifo: near
 
 	pcm_ptr		= digi + PCMSTATE::digi + DIGITAB::addr
 	pcm_bank	= digi + PCMSTATE::digi + DIGITAB::bank
 	bytes_left	= zp_tmp
-	
+
 	__CPX		= $e0	; opcode for cpx immediate
 	__BNE		= $d0
-	
+
 	; swap in the current RAM bank of the sample stream
 	lda RAM_BANK
 	sta BANK_SAVE
@@ -387,7 +387,7 @@ do_bankwrap:
 	inc RAM_BANK
 	inc pcm_bank
 	bra no_bankwrap
-	
+
 .endproc
 ;===============================================[ load_fifo ]=====^
 

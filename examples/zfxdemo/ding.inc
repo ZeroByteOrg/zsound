@@ -1,8 +1,8 @@
 ; ZFX sound sequence (PSG voice format):
 ZFX_psgtest:
-	.byte       $00, $bc, $01, $02, $03, $3f, $0a, $ff
-	.byte       $0b, $37
-	.byte       $0b, $2f
+	.byte   $00, $bc, $01, $02, $03, $3f, $0a, $ff
+	.byte   $0b, $37
+	.byte   $0b, $2f
 	.byte		$0b, $27
 	.byte		$0b, $1f
 	.byte		$0b, $17
@@ -30,6 +30,7 @@ ZFX_psgtest:
 ; a different patch before playing it.
 
 ; patch data (YMP format)
+; patches can be generated using the dmp2x16 tool.
 YMP_ding:
 	.byte	$c6,$00,$31,$01,$32,$30,$51,$26
 	.byte	$0c,$0f,$1f,$1f,$1f,$1f,$09,$09
@@ -37,27 +38,15 @@ YMP_ding:
 	.byte	$f5,$f4
 
 ; ZFX sound sequence (FM voice format):
-.if REV=38
-ZFX_ding: ; (pitch transposed for R38)
-	;       reg  val  delay
-	.byte	$28, $77, $00	; set KC (pitch) = $77 (F#-7)
-	.byte	$08, $00, $00   ; KeyUP (release any previous existing note)
-	.byte	$08, $78, $01	; KeyDN (play the note)
-	.byte	$08, $00, $07	; KeyUP (release note)
-	.byte	$28, $7c, $00	; KC = $7c (A#-7)
-	.byte	$08, $78, $01	; KeyDN
-	.byte	$08, $00, $ff	; KeyUP (delay $FF = EOF)
-.else
-ZFX_ding: ; (pitch transposed for R39)
-	;       reg  val  delay
-	.byte	$28, $79, $00	; KC = $79 (G#-7)
-	.byte	$08, $00, $00   ; KeyUP
+ZFX_ding:
+	;     reg  val  delay
+	.byte	$28, $79, $00 ; KC = $79 (G#-7)
+	.byte	$08, $00, $00 ; KeyUP
 	.byte	$08, $78, $01	; KeyDN
 	.byte	$08, $00, $07	; KeyUP
 	.byte	$28, $7e, $00	; KC = $7e (C-7)
 	.byte	$08, $78, $01	; KeyDN
 	.byte	$08, $00, $ff	; KeyUP
-.endif
 
 ; For reference, the YM registers used are:
 ; $28: KC value for a channel

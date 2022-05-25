@@ -1,42 +1,22 @@
-.ifndef REV
-	REV = 39
-.endif
-
-;Macros to import the zsound version-tagged symbols as non-tagged symbols.
-;Zsound contains symbols for r38 and r39 compatible builds, and exports them
-;as symbol38 or symbol39. The macros "undo" that tag.
-; eg: playmusic39: --> playmusic:
-
-.ifndef __ZSOUND_TAG_SYMBOLS__
-__ZSOUND_TAG_SYMBOLS__ = 1
-.macro IMPORT_TAGGED symbol
-	.import	.ident(.sprintf("%s%d",symbol,REV))
-	.ident(.sprintf("%s",symbol))	:=	.ident(.sprintf("%s%d",symbol,REV))
-.endmacro
-
-.macro IMPORTZP_TAGGED symbol
-	.importzp .ident(.sprintf("%s%d",symbol,REV))
-	.ident(.sprintf("%s",symbol))	:=	.ident(.sprintf("%s%d",symbol,REV))
-.endmacro
-.endif
-
-IMPORT_TAGGED "init_player"
-IMPORT_TAGGED "stepmusic"
-IMPORT_TAGGED "playmusic"
-IMPORT_TAGGED "playmusic_IRQ"
-IMPORT_TAGGED "startmusic"
-IMPORT_TAGGED "stopmusic"
-IMPORT_TAGGED "set_music_speed"
-IMPORT_TAGGED "force_loop"
-IMPORT_TAGGED "set_loop"
-IMPORT_TAGGED "disable_loop"
-IMPORT_TAGGED "set_callback"
-IMPORT_TAGGED "clear_callback"
-IMPORT_TAGGED "get_music_speed"
+.import init_player
+.import stepmusic
+.import playmusic
+.import playmusic_IRQ
+.import startmusic
+.import stopmusic
+.import set_music_speed
+.import force_loop
+.import set_loop
+.import disable_loop
+.import set_callback
+.import clear_callback
+.import get_music_speed
 
 ; to-do: move patchym into a separate .inc file for API
-IMPORT_TAGGED "patchym"
-
+.ifndef __PATCHYM__
+__PATCHYM__ = 1
+.import patchym
+.endif
 
 ;---------------------------------------------------[CORE ROUTINES]----------
 
@@ -104,7 +84,7 @@ IMPORT_TAGGED "patchym"
 ; (usually 60Hz - once per frame)
 ; THIS ROUTINE IS NOT SAFE to call directly during IRQ, as it clobbers VERA
 ; registers w/o fixing them (for speed reasons). If your program
-; is designed to run the music player during an IRQ, use one of the IRQ-safe 
+; is designed to run the music player during an IRQ, use one of the IRQ-safe
 ; wrapper functions that save and restore VERA before calling this
 ; core routine, or else be sure to save the states of the affected VERA registers
 
@@ -113,7 +93,7 @@ IMPORT_TAGGED "patchym"
 
 
 ;.............
-; startmusic : 
+; startmusic :
 ; ===========================================================================
 ; Arguments:
 ;	A	: HIRAM bank of tune
@@ -136,7 +116,7 @@ IMPORT_TAGGED "patchym"
 
 
 ;............
-; stopmusic : 
+; stopmusic :
 ; ===========================================================================
 ; Arguments: (none)
 ; Returns: (none)
@@ -150,7 +130,7 @@ IMPORT_TAGGED "patchym"
 
 
 ;................
-; setmusicspeed : 
+; setmusicspeed :
 ; ===========================================================================
 ; Arguments:
 ;	X/Y	: Playback speed in Hz. (x=lo, y=hi)
@@ -166,7 +146,7 @@ IMPORT_TAGGED "patchym"
 
 
 ;.............
-; force_loop : 
+; force_loop :
 ; ===========================================================================
 ; Arguments: .A = number of times to loop the music. 0 = infinite
 ; Returns: none
@@ -179,7 +159,7 @@ IMPORT_TAGGED "patchym"
 
 
 ;...........
-; set_loop : 
+; set_loop :
 ; ===========================================================================
 ; Arguments: .A = number of times to loop the music. 0 = infinite
 ; Returns: none
@@ -215,7 +195,7 @@ IMPORT_TAGGED "patchym"
 ; Sets a notification callback whenever a tune finishes or loops.
 ; The callback passes the following parameters:
 ; Z=0 if music is stopped, Z=1 if music is playing
-; .A = number of remaining loops 
+; .A = number of remaining loops
 
 ;.................
 ; clear_callback :
@@ -224,7 +204,7 @@ IMPORT_TAGGED "patchym"
 ; Returns: none
 ; Affects: A
 ; ---------------------------------------------------------------------------
-; Disables the EOF notification callback 
+; Disables the EOF notification callback
 
 ;..................
 ; get_music_speed :

@@ -9,9 +9,7 @@ and not loaded from any external file.
 
 Compiling:
 Use the included build.sh script:
-./build.sh 39
+./build.sh
 
 Or on systems without bash, an example compilation is:
 cl65 -t cx16 -o ZFXDEMO.PRG zfxdemo.asm ../../lib/zsound.lib
-
-

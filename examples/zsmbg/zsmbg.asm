@@ -1,7 +1,3 @@
-.ifndef REV
-	REV=38
-.endif
-
 .include "x16.inc"
 .include "zsmplayer.inc"
 
@@ -100,7 +96,7 @@ done:
 irq_handler:
 	jsr	playmusic_IRQ	; call the IRQ-safe playback function
 kernal_irq := (* + 1)
-	jmp	$FFFF			; Installation overwrites this with previous vector
+	jmp	$FFFF	; Installation overwrites this with previous vector
 						; value from ($0314)
 
 

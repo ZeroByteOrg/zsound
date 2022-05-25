@@ -4,36 +4,36 @@
 .include "macros.inc"
 
 
-EXPORT_TAGGED "init_player"
-EXPORT_TAGGED "stepmusic"
-EXPORT_TAGGED "startmusic"
-EXPORT_TAGGED "stopmusic"
-EXPORT_TAGGED "playmusic"
-EXPORT_TAGGED "playmusic_IRQ"
-EXPORT_TAGGED "set_music_speed"
-EXPORT_TAGGED "force_loop"
-EXPORT_TAGGED "set_loop"
-EXPORT_TAGGED "disable_loop"
-EXPORT_TAGGED "set_callback"
-EXPORT_TAGGED "clear_callback"
-EXPORT_TAGGED "get_music_speed"
+.export init_player
+.export stepmusic
+.export startmusic
+.export stopmusic
+.export playmusic
+.export playmusic_IRQ
+.export set_music_speed
+.export force_loop
+.export set_loop
+.export disable_loop
+.export set_callback
+.export clear_callback
+.export get_music_speed
 
 ; library-internal exports and imports. These probably shouldn't be
 ; included in the main api .inc files
 
-IMPORT_TAGGED "nextdata"
-EXPORT_TAGGED "data"
+.import nextdata
+.export data
 
 ZSM_HDR_SIZE	=	16	; does not include PRG header which isn't loaded
-ZSM_EOF			=	$80	; (equates to pause cmd with value=0)
+ZSM_EOF				=	$80	; (equates to pause cmd with value=0)
 
 .segment "ZEROPAGE"
 
-data:		.tag	SONGPTR
+data:			.tag	SONGPTR
 delay:		.res	1
 ; these next two probably need to use TMP ZP space, not permanent.....
 fracstep:	.res	1			; residual steps per frame
-step:		.res	2			; integer steps per frame
+step:			.res	2			; integer steps per frame
 
 .segment "BSS"
 
@@ -51,10 +51,10 @@ zsm_steps	:= zsm_fracsteps + 1
 ; Vector table for various callback pointers
 ZSM_VECTOR_TABLE = *
 ZSM_VECTOR_pcmcall:		.res 2	; PCM music track handler
-ZSM_VECTOR_user:		.res 2	; custom data event handler
-ZSM_VECTOR_done:		.res 2	; callback to handle ZSM data EOF
+ZSM_VECTOR_user:			.res 2	; custom data event handler
+ZSM_VECTOR_done:			.res 2	; callback to handle ZSM data EOF
 ZSM_VECTOR_notify:		.res 2	; callback when music loops or ends
-ZSM_VECTOR_play:		.res 2  ; music playback routine
+ZSM_VECTOR_play:			.res 2  ; music playback routine
 ZSM_VECTOR_COUNT	= (*-ZSM_VECTOR_TABLE)
 
 

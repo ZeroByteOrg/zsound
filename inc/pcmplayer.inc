@@ -1,27 +1,3 @@
-.ifndef REV
-	REV = 39
-.endif
-
-.ifndef __PCMPLAYER_INC__
-__PCMPLAYER_INC__ = 1
-
-;Macros to import the zsound version-tagged symbols as non-tagged symbols.
-;Zsound contains symbols for r38 and r39 compatible builds, and exports them
-;as symbol38 or symbol39. The macros "undo" that tag.
-; eg: playmusic39: --> playmusic:
-
-.ifndef __ZSOUND_TAG_SYMBOLS__
-__ZSOUND_TAG_SYMBOLS__ = 1
-.macro IMPORT_TAGGED symbol
-	.import	.ident(.sprintf("%s%d",symbol,REV))
-	.ident(.sprintf("%s",symbol))	:=	.ident(.sprintf("%s%d",symbol,REV))
-.endmacro
-
-.macro IMPORTZP_TAGGED symbol
-	.importzp .ident(.sprintf("%s%d",symbol,REV))
-	.ident(.sprintf("%s",symbol))	:=	.ident(.sprintf("%s%d",symbol,REV))
-.endmacro
-.endif
 
 ; DIGITAB is the structure used by the engine to store the parameters of
 ; a digi (digital audio) clip. This format may change as this library is
@@ -30,19 +6,18 @@ __ZSOUND_TAG_SYMBOLS__ = 1
 	addr		.addr
 	bank		.byte
 	size		.word	; 24bit digi size (in bytes)
-	sizehi		.byte	; ...
+	sizehi	.byte	; ...
 	cfg			.byte	; VERA_audio_ctrl value
 	rate		.byte	; VERA_audio_rate
 .endstruct
 
 
-IMPORT_TAGGED "init_pcm"
-IMPORT_TAGGED "start_digi"
-IMPORT_TAGGED "play_pcm"
-IMPORT_TAGGED "stop_pcm"
-IMPORT_TAGGED "set_pcm_volume"
+.import init_pcm
+.import start_digi
+.import play_pcm
+.import stop_pcm
+.import set_pcm_volume
 
-.endif
 
 ;...........
 ; init_pcm :

@@ -4,13 +4,13 @@
 
 ; IMPORTS / EXPORTS:
 
-.segment "ZEROPAGE"
-IMPORT_TAGGED "data"
+;.segment "ZEROPAGE"
+.importzp data
 
 
 .segment "CODE"
-IMPORT_TAGGED	"stopmusic"
-EXPORT_TAGGED	"nextdata"
+.import stopmusic
+.export nextdata
 
 ;-----------------------------------------------------------------------
 ; nextdata
@@ -40,7 +40,7 @@ nextpage:	lda data+1		; advance the "page" address
 			lda #$a0		; return to page $a000
 			inc RAM_BANK	; bank in the next RAM bank
 			inc data + SONGPTR::bank
-			
+
 			; TODO: Make this a cmp w/ actual # of avail banks.
 			;       (don't assume 2MB of HIRAM installed)
 			beq	die			; out-of-memory error

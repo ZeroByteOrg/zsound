@@ -1,9 +1,9 @@
-; x16.inc by SlithyMatt - slightly modified for multi-revision support
+; x16.inc by SlithyMatt
 .include "x16.inc"
 ;.include "zsm.inc"
 .include "macros.inc"
 
-EXPORT_TAGGED "patchym"
+.export patchym
 
 .segment  "CODE"
 

@@ -7,21 +7,8 @@ __CX16__ = 1
 
 .setcpu "65C02"
 
-__REVDEFAULT__ = 39
-
-.ifdef REV
-	.if REV = 38
-		X16_VERSION := 38
-	.else
-		X16_VERSION := __REVDEFAULT__
-	.endif
-.else
-	X16_VERSION := __REVDEFAULT__
-.endif
-
-
 ; X16 addresses, values, and macros
-; Accurate for ROM release R38
+; Accurate for ROM release R41
 
 SD_DEVICE   = 8 ; also host file system on emulator if no SD image mounted
 DISK_DEVICE = SD_DEVICE ; change if to be loaded off IEC device
@@ -123,19 +110,11 @@ VERA_audio_data   = $9F3D
 VERA_spi_data     = $9F3E
 VERA_spi_ctrl     = $9F3F
 
-.if X16_VERSION = 38
-	ROM_BANK          = $9F60
-	RAM_BANK          = $9F61
+ROM_BANK          = $01
+RAM_BANK          = $00
 
-	YM_reg            = $9FE0
-	YM_data           = $9FE1
-.else
-	ROM_BANK          = $01
-	RAM_BANK          = $00
-
-	YM_reg            = $9F40
-	YM_data           = $9F41
-.endif
+YM_reg            = $9F40
+YM_data           = $9F41
 
 ; Emulator Registers
 GIF_ctrl          = $9FB5

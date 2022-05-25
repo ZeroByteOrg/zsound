@@ -5,9 +5,9 @@
 
 ; UNDER CONSTRUCTION. Obviously, no SFX player here yet.....
 
-EXPORT_TAGGED "update"
-EXPORT_TAGGED "init"
-EXPORT_TAGGED "play"
+.export update
+.export init
+.export play
 
 .segment "ZEROPAGE"
 zp_tmp1:		.res 2
@@ -23,7 +23,7 @@ ZSM_VECTOR_notify:		.res 2	; callback when an FX ends
 ZFX_VECTOR_COUNT	= (*-ZFX_VECTOR_TABLE)
 
 ; idea - make SFX work like MOD/trackers with patterns and a sequence
-; table. 
+; table.
 
 
 
@@ -54,7 +54,7 @@ nextbyte:
 ;	X:  voice # (0-7 = FM, 8-23 = PSG)
 ;	AY: address of ZFX data (A = low byte, Y = hi byte)
 ; Returns: CC=success CS=error
-; Affects: 
+; Affects:
 ; ---------------------------------------------------------------------------
 ; Triggers playback of a ZFX sound.
 
@@ -146,7 +146,7 @@ play_psg:
 	data = zp_tmp1
 	counter = zp_tmp2+1	; skipping zp_tmp2+0 in case of bank support using zp_tmp1+2
 	voice	= zp_tmp3
-	
+
 	lda active
 	bne update_psg
 	rts
@@ -262,7 +262,7 @@ exit:
 	fm_ptr_lo   = zfx_state + PLAYERSTATE::fm + FMSTATE::data + FMPTR::addr_lo
 	fm_ptr_hi   = zfx_state + PLAYERSTATE::fm + FMSTATE::data + FMPTR::addr_hi
 	fm_ptr_bank = zfx_state + PLAYERSTATE::fm + FMSTATE::data + FMPTR::bank
-	
+
 	stx voice
 	; create page-aligned data pointer in ZP
 	stz data
