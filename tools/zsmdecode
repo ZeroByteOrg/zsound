@@ -125,9 +125,11 @@ printf(HDRSTRING,"PSG Channel Mask",$s);
 printf(HDRSTRING,"",sprintf("%16s%s","","0                             F"));
 $value = $zsm[12] + ($zsm[13] << 8);
 printf(HDRSTRING,"Tick Rate",sprintf("%d Hz",$value));
+define("TICKTIME",1/$value);
 printf(DIVIDER);
 
 // begin ZSM data stream
+$time=0;
 $i=16;
 while ($i < sizeof($zsm)) {
   $cmd = $zsm[$i];
@@ -140,8 +142,9 @@ while ($i < sizeof($zsm)) {
     break;
   case 2:
   case 3:
+		$time += ($cmd & 0x7f) * TICKTIME;
 		if($cmd == 0x80) print "EOF\n";
-		else printf("delay %d\n",$cmd & 0x7f);
+		else printf("delay %d (t=%0.4f)\n",$cmd & 0x7f,$time);
     $i++;
     break;
   default:
