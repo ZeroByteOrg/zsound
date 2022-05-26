@@ -26,6 +26,15 @@ vgm2zsm:
 	from a simple single-purpose function and really needs to be
 	rewritten from scratch)
 
+zsmdecode:
+	Interprets ZSM files and outputs human-readable text.
+
+raw2zcm:
+	Adds a Zsound PCM info header to the beginning of a raw PCM file, and
+	limits output to 2MB size (minus 8K since bank 0 of X16 is reserved
+	by the Kernal). Planned features for this are to support various
+	formats for input (WAV, MP3, etc) and convert them into ZCM.
+
 zsm2sfx:
 	Currently broken - this tool is intended to be part of an admittely
 	convoluted workflow whereby FM-based SFX are created in Deflemask,
@@ -33,6 +42,11 @@ zsm2sfx:
 	using this tool to strip down the ZSM into the bare minimum number
 	of writes needed to play the sound - the SFX format is different than
 	the ZSM format.
+
+vgmconvert:
+	This is an in-development project to replace the vgm2zsm tool with a
+	more flexible implementation in Python. It's totally unusable until
+	further notice.
 	
 Windows PHP:
 
