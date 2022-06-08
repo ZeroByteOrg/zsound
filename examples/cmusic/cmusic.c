@@ -1,13 +1,11 @@
-#include "../../include/zsmplayer.h"
+// To get "zsmplayer.h" into the include path with cl65:
+// cl65 -I ../../include ....
 
+#include "zsmplayer.h"
 #include <cbm.h>
 #include <conio.h>
 
-
-
 #define RAMBANK (*(uint8_t*)0)
-
-const char* const fn = "bgm.zsm";
 
 // because cbm.h's waitvsync() is broken
 void __fastcall__ vsync();
@@ -23,10 +21,13 @@ void bload(const char* filename, const uint8_t bank, const uint16_t address)
 }
 
 int main() {
+	char playing;
+
+	bload("bgm.zsm",2,0xa000);
 	init_player();
-	bload(fn,2,0xa000);
-	startmusic(2,0xa000);
-	while(1) {
+	playing = startmusic(2,0xa000);
+	if (!playing) cprintf("Error starting song.\n\r");
+	while(playing) {
 		vsync();
 		playmusic();
 	}
