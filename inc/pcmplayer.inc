@@ -92,10 +92,10 @@
 ;.................
 ; set_pcm_volume :
 ; ===========================================================================
-; Arguments: Pointer to digi parameter table in memory.
+; Arguments:
 ;	.A  = new volume level (only the 4 LSB are used)
 ;
 ; Returns: none
-; Affects: none
+; Affects: A
 ; ---------------------------------------------------------------------------
 ; Sets the PCM volume level 0..F
