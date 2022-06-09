@@ -1,0 +1,190 @@
+#!/usr/bin/php
+<?php
+
+/* raw2zsm is a tool for applying a ZCM header to the beginning of a
+ * raw PCM file so programs don't need to be pre-configured with the
+ * settings for every digi they load and play. The library can still
+ * play RAW pcm just fine (it doesn't know the difference or care),
+ * but the program will need to know the PCM parameters from some other
+ * source, be it hard-coded tables in source, or a separate loadable
+ * parameters table, etc.
+ *
+ * Currently, it also prepends a 2-byte PRG header of 'zp' but with
+ * the X16 Kernal now being able to load 'headerless' files, I am
+ * likely to remove all PRG headers from the file specifications
+ * related to Zsound. Until that time, the tool places one.
+ *
+ * The header format is identical to the DIGITAB data structure
+ * used to trigger digi playback in Zsound with "start_digi"
+ *
+ * See format spec / pcmplayer.ini for more details
+ *
+ * Usage:
+ *
+ * raw2zsm [-q] [-s] rate infile [outfile]
+ *
+ * -q = 16-bit sample -Q-uality  (defaults to 8bit if -q not specified)
+ * -s = -S-tereo                 (defaults to mono if -s not specified)
+ *
+ * outfile = TEST.ZCM if no output file is specified.
+ *
+*/
+
+// Detect if running under Windows
+define ("WINDOWS", strpos(strtoupper(PHP_OS),'WIN')!==false);
+define ("MAXSIZE", 2088960); // 2MB of Banked RAM - 1 bank for Kernal.
+
+global $OF;
+
+$ERR=false;
+
+$ERR=parse_cmdline_args()!=0;
+
+/*
+ * Header format from zsound pcmplayer.asm:
+ * addr     .word   ; memory location of PCM stream data
+ * bank     .byte   ; HiRAM bank # of PCM stream data
+ * size		.word	; 24bit digi size (bytes, excluding header)
+ * sizehi	.byte	; ...
+ * cfg		.byte	; VERA_audio_ctrl value
+ * rate		.byte	; VERA_audio_rate
+*/
+
+$hdr  = array_fill(0,8,0);
+$cfg  = BITRATE | STEREO | 0x0f; // 0x0f = max volume
+$rate = (SAMPLERATE/(25000000>>16))+1;
+$size = filesize(INFILENAME);
+
+if(($rate > 0xFF)||($rate < 1)) {
+	print "ERROR: Sample rate must be 1 .. 48828\n\n";
+	exit(1);
+}
+$hdr[3]=$size & 0xff;
+$hdr[4]=($size >> 8) & 0xff;
+$hdr[5]=($size >> 16) & 0xff;
+$hdr[6]=$cfg;
+$hdr[7]=$rate;
+
+$warn = error_reporting();
+$f = fopen(INFILENAME, "r");
+if (! $f) {
+  print "ERROR: Unable to open input file $filename\n";
+  exit(1);
+}
+$pcm=fread($f,$size);
+fclose($f);
+error_reporting($warn);
+
+$pcm = unpack(sprintf('C%d',$size),$pcm);
+$pcm = array_values($pcm);
+if (sizeof($pcm) + sizeof($hdr) > MAXSIZE) {
+	print "Truncating output to " . MAXSIZE . " bytes.\n";
+	$pcm = array_slice($pcm,0,MAXSIZE-sizeof($hdr));
+}
+
+$warn = error_reporting();
+$f = fopen(OUTFILENAME, "wB");
+if (! $f) {
+	print "ERROR: Unable to open output file " . OUTFILENAME . "\n";
+	exit(1);
+}
+fwrite($f,pack('C*',...$hdr));
+fwrite($f,pack('C*',...$pcm));
+fclose($f);
+error_reporting($warn);
+
+exit(0);
+
+// =================================== END OF MAIN PROGRAM =============
+
+function glob_windows_filenames($list) {
+	$newlist = array();
+	foreach ($list as $item) {
+		$result = glob($item);
+		if (sizeof($result) > 0)
+			$newlist = $newlist + $result;
+		else
+			printf("WARNING: %s did not match any files\n",$item);
+	}
+	return($newlist);
+}
+
+
+function parse_cmdline_args() {
+	global $argc;
+	global $argv;
+
+	$opts = getopt('hHsq', [], $rest_index);
+
+	define ("USAGE","$argv[0] [-h] [-q] [-s] <rate> <input filename> [output filename]");
+
+	if (isset($opts['h'])||isset($opts['H'])) {usage(); return(1);}
+
+	if (!isset($argv[$rest_index])) {
+		usage();
+		print "ERROR: no sample rate specified.\n\n";
+		return(1);
+	} else {
+		define("SAMPLERATE",$argv[$rest_index]);
+	}
+
+	if (!isset($argv[$rest_index+1])) {
+		usage();
+		print "ERROR: no input file specified.\n\n";
+	} else {
+		define("INFILENAME",$argv[$rest_index+1]);
+	}
+
+	if (isset($argv[$rest_index+2])) {
+		define ("OUTFILENAME",$argv[$rest_index+2]);
+	} else {
+		// make this be infilename with ext changed to .zcm
+		define ("OUTFILENAME","TEST.ZCM");
+	}
+
+	if (isset($opts['q'])) {
+		define ("BITRATE",1<<5);
+	} else {
+		define ("BITRATE",0);
+	}
+
+	if (isset($opts['s'])) {
+		define ("STEREO",1<<4);
+	} else {
+		define ("STEREO",0);
+	}
+
+	print "SUCCESS\n";
+	return(0);
+/*
+ 	if (isset($argv[$rest_index])) {
+		$dmpfiles = array_slice($argv,$rest_index);
+		if(WINDOWS) {
+			$dmpfiles = glob_windows_filenames($dmpfiles);
+		}
+		$dmpfiles = deduplicate($dmpfiles);
+	} else {
+		shortusage("No input files specified.");
+	}
+*/
+
+}
+
+function usage($message = "") {
+	global $argv;
+	print "\nUSAGE:\n";
+	print "  " . USAGE . "\n";
+	print "\n";
+	print "-q: set audio quality = 16bit. (default is 8bit)\n";
+	print "-s: stereo\n";
+	print "\n";
+	if (strlen($message) > 0) {
+		print "ERROR:\n  $message\n\n";
+	}
+	exit(1);
+}
+
+
+
+
+?>
