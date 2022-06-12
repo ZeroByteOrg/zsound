@@ -17,10 +17,10 @@ _pcm_init := init_pcm
 .export _pcm_play
 _pcm_play := play_pcm
 
-.export stop_pcm
+.export _pcm_stop
 _pcm_stop := stop_pcm
 
-.export _pcm_trigger_digi:
+.export _pcm_trigger_digi
 _pcm_trigger_digi:
   phx
   tax
