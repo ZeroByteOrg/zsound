@@ -62,10 +62,12 @@ void screen_init() {
 
 void draw_resources() {
   char i;
+  gotoxy(1,30);
+  cprintf("resources:");
   for (i=0; i<32 ; i++) {
     if (resource[i]->type == CLIP_NULL) continue;
     gotoxy(resource[i]->x, resource[i]->y);
-    cprintf("%c: %-20s 0x%02x 0x%04x",
+    cprintf("%c: %-20s %02x %04x",
       resource[i]->key,
       resource[i]->name,
       resource[i]->bank,
@@ -84,7 +86,8 @@ uint16_t bload(char* filename, uint16_t address) {
 
 void load_sounds() {
   uint8_t i;
-  uint8_t bank = RAM_BANK;
+  digitab* zcm;
+  uint8_t bank = 1;
   uint16_t addr = 0xa000;
   char key='1';
   const char* const names[4]= {
@@ -96,9 +99,8 @@ void load_sounds() {
   const mediatype types[4]= {
     CLIP_ZSM, CLIP_ZSM, CLIP_ZCM, CLIP_ZCM
   };
-
-  RAM_BANK = 1;
   for (i=0 ; i<4 ; i++) {
+    RAM_BANK = bank;
     resource[i]=malloc(sizeof(item_t));
     resource[i]->x=0;
     resource[i]->y=10+i;
@@ -108,9 +110,16 @@ void load_sounds() {
     resource[i]->addr=addr;
     resource[i]->key=key;
     addr = bload(resource[i]->name,addr);
+    bank = RAM_BANK; // save ending bank for next item's load point
+    if (resource[i]->type == CLIP_ZCM) {
+      // switch back to this resource's starting bank and set PCM data pointer.
+      RAM_BANK = resource[i]->bank;
+      zcm = (digitab*)resource[i]->addr;
+      zcm->pcmdata = (uint8_t*)zcm + 8;
+      zcm->bank = RAM_BANK;
+    }
     ++key;
   }
-  RAM_BANK = bank;
 }
 
 void trigger(item_t* r) {
@@ -125,9 +134,9 @@ void trigger(item_t* r) {
 
 void init() {
   uint8_t i;
-  screen_init();
   zsm_init();
   pcm_init();
+  screen_init();
   for (i=0 ; i<32 ; i++) resource[i] = &null_item;
 }
 
