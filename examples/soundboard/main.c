@@ -28,21 +28,24 @@ void screen_init();
 void draw_resources();
 void load_sounds();
 void init();
-void trigger(item_t* r);
+void trigger(char i);
 void install_irq();
 void remove_irq();
-
-struct active_resource {
-    uint8_t music;
-    uint8_t digi;
-} active_resource;
+void music_callback(uint8_t playing, uint8_t loops_left);
 
 mediatype active[3];
 
 item_t* resource[32];
 
-uint8_t wait = 1;
+struct active_resource {
+    char music;
+    char digi;
+} active_resource = { -1, -1 };
+
 uint16_t kernal_irq;
+
+uint8_t wait = 1;
+uint8_t numcalls = 0;
 
 static item_t const null_item = { 0,0,"",CLIP_NULL,1,0xa000,'\xff'};
 
@@ -122,13 +125,27 @@ void load_sounds() {
   }
 }
 
-void trigger(item_t* r) {
-  if (r->type == CLIP_ZCM) {
-    pcm_trigger_digi(r->bank, r->addr);
+void trigger(char i) {
+  uint8_t x = (uint8_t)i;
+  if (resource[x]->type == CLIP_ZCM) {
+    if (active_resource.digi == i) {
+      pcm_stop();
+      active_resource.digi = -1;
+    }
+    else {
+      pcm_trigger_digi(resource[x]->bank, resource[x]->addr);
+      active_resource.digi = i;
+    }
   }
-  if (r->type == CLIP_ZSM) {
+  if (resource[i]->type == CLIP_ZSM) {
     zsm_stopmusic();
-    zsm_startmusic(r->bank, r->addr);
+    if (active_resource.music == i) {
+      active_resource.music = -1;
+    }
+    else {
+      active_resource.music = i;
+      zsm_startmusic(resource[x]->bank, resource[x]->addr);
+    }
   }
 }
 
@@ -136,12 +153,18 @@ void init() {
   uint8_t i;
   zsm_init();
   pcm_init();
+  zsm_setcallback(&music_callback);
   screen_init();
   for (i=0 ; i<32 ; i++) resource[i] = &null_item;
 }
 
 void install_irq() {
   // maybe we won't need to use IRQs?
+}
+
+void music_callback(uint8_t playing, uint8_t loops_left) {
+  gotoxy (20,0);
+  cprintf ("%02x %02x %u",playing,loops_left,++numcalls);
 }
 
 
@@ -157,8 +180,11 @@ int main() {
     vsync();
     pcm_play();
     zsm_play();
-    if(kbhit())
+    if(kbhit()) {
       key=cgetc();
+      gotoxy(78,0);
+      cprintf("%02x",key);
+    }
     else
       key=-1;
     switch (key) {
@@ -166,10 +192,16 @@ int main() {
       case 'Q':
         run=0;
         break;
+      case '\x03': //escape
+        pcm_stop();
+        zsm_stopmusic();
+        active_resource.music = -1;
+        active_resource.digi  = -1;
+        break;
       default:
         for(i=0 ; i<32 ; i++) {
           if (key==resource[i]->key)
-            trigger(resource[i]);
+            trigger(i);
         }
     }
 
