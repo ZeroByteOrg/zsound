@@ -1,0 +1,21 @@
+#include "screen.h"
+#include <conio.h>
+#include <cx16.h>
+
+void screen_init() {
+  uint8_t i;
+  videomode(VIDEOMODE_80x30);
+  clrscr();
+  cbm_k_bsout(CH_FONT_UPPER);
+  gotoxy (0,0);
+  cprintf("media jukebox");
+  gotoxy (0,1);
+  for (i=0 ; i<80 ; i++) cputc('-');
+
+  gotoxy(0,3);
+  cprintf("directory: /");
+}
+
+void draw_resources() {
+
+}
