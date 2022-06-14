@@ -24,12 +24,12 @@ int main() {
 	char playing;
 
 	bload("bgm.zsm",2,0xa000);
-	init_player();
-	playing = startmusic(2,0xa000);
+	zsm_init();
+	playing = zsm_startmusic(2,0xa000);
 	if (!playing) cprintf("Error starting song.\n\r");
 	while(playing) {
 		vsync();
-		playmusic();
+		zsm_play();
 	}
 	return 0;
 }

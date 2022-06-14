@@ -19,11 +19,11 @@
 
 .code
 
-.export _init_player
-_init_player := init_player
+.export _zsm_init
+_zsm_init := init_player
 
-.export _stepmusic
-_stepmusic:
+.export _zsm_step
+_zsm_step:
   jsr stepmusic
   lda #0
   rol     ; stepmusic should return 0=playing / 1=stopped in C flag.
@@ -31,14 +31,14 @@ _stepmusic:
   ldx #0  ; promote to int. (even if return type is char)
   rts
 
-.export _playmusic
-_playmusic := playmusic
+.export _zsm_play
+_zsm_play := playmusic
 
-.export _playmusic_IRQ
-_playmusic_IRQ := playmusic_IRQ
+.export _zsm_playIRQ
+_zsm_playIRQ := playmusic_IRQ
 
-.export _startmusic
-_startmusic:
+.export _zsm_startmusic
+_zsm_startmusic:
   phx
   tax
   jsr popa
@@ -50,31 +50,33 @@ _startmusic:
   ldx #0
   rts
 
-.export _stopmusic
-_stopmusic := stopmusic
+.export _zsm_stopmusic
+_zsm_stopmusic := stopmusic
 
-.export _set_music_speed
-_set_music_speed:
+.export _zsm_setspeed
+_zsm_setspeed:
   phx
   tax
   ply
   jmp set_music_speed
 
-.export _force_loop
-_force_loop := force_loop
+.export _zsm_forceloop
+_zsm_forceloop := force_loop
 
-.export _set_loop
-_set_loop := set_loop
+.export _zsm_loop
+_zsm_loop := set_loop
 
-.export _disable_loop
-_disable_loop := disable_loop
+.export _zsm_noloop
+_zsm_noloop := disable_loop
 
-.export _set_callback
-_set_callback:
+.export _zsm_setcallback
+_zsm_setcallback:
   ; set wrapper with the desired callback address
   ; and tell zsound to call the wrapper.
+  sei
   sta callback_vector
   stx callback_vector+1
+  cli
   ldx #<do_callback
   ldy #>do_callback
   jmp set_callback
@@ -91,11 +93,11 @@ push_it:
   jmp $FFFF  ; RTS from the callback will return to zsmplayer.
   callback_vector := (*-2)
 
-.export _clear_callback
-_clear_callback := clear_callback
+.export _zsm_clearcallback
+_zsm_clearcallback := clear_callback
 
-.export _get_music_speed
-_get_music_speed:
+.export _zsm_getspeed_normal
+_zsm_getspeed_normal:
   jsr get_music_speed
   txa
   phy
