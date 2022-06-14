@@ -4,9 +4,11 @@
 #include <stdint.h>
 
 typedef struct digitab_s {
-  uint16_t* addr;
-  uint8_t   bank;
-
+  uint8_t* pcmdata;
+  uint8_t  bank;
+  uint8_t  size[3]; //little-endian 24bit value = n bytes of PCM data
+  uint8_t  VERA_cfg;
+  uint8_t  VERA_rate;
 } digitab;
 
 extern void __fastcall__ pcm_init();
