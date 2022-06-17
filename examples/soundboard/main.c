@@ -87,22 +87,24 @@ uint16_t bload(char* filename, uint16_t address) {
 	return cbm_k_load(0,address);
 }
 
+#define NUM_SOUNDS 4
+
 void load_sounds() {
   uint8_t i;
   digitab* zcm;
   uint8_t bank = 1;
   uint16_t addr = 0xa000;
   char key='1';
-  const char* const names[4]= {
+  const char* const names[NUM_SOUNDS]= {
     "sonic.zsm",
     "sf2intro.zsm",
     "shoryuken.zcm",
     "pacman.zcm"
   };
-  const mediatype types[4]= {
+  const mediatype types[NUM_SOUNDS]= {
     CLIP_ZSM, CLIP_ZSM, CLIP_ZCM, CLIP_ZCM
   };
-  for (i=0 ; i<4 ; i++) {
+  for (i=0 ; i<NUM_SOUNDS ; i++) {
     RAM_BANK = bank;
     resource[i]=malloc(sizeof(item_t));
     resource[i]->x=0;
