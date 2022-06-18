@@ -1117,6 +1117,22 @@ while ($i < EOF) {
   case 0x4F:	// Sega GameGear PCM stereo write (one-byte operand)
 	$i+=1; 		// (skip)
 	break;
+
+	// VGM DAC Streaming control (Defle and Furnace use this)
+	case 0x90:
+	case 0x91:
+	case 0x95:
+		$i+=4;
+		break;
+	case 0x92:
+		$i+=5;
+		break;
+	case 0x93:
+		$i+=10;
+		break;
+	case 0x94:
+		$i++;
+		break;
   case 0xB5:  // Ignore common PCM chip writes.
   case 0xB6:
   case 0xB7:
