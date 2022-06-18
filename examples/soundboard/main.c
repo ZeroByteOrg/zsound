@@ -89,6 +89,8 @@ uint16_t bload(char* filename, uint16_t address) {
 
 #define NUM_SOUNDS 4
 
+// TODO: Make program read list of sounds from current directory
+
 void load_sounds() {
   uint8_t i;
   digitab* zcm;
@@ -146,6 +148,9 @@ void trigger(char i) {
     }
     else {
       active_resource.music = i;
+      gotoxy(20,0);
+      cprintf("                           ");
+      numcalls=0;
       zsm_startmusic(resource[x]->bank, resource[x]->addr);
     }
   }
@@ -165,8 +170,11 @@ void install_irq() {
 }
 
 void music_callback(uint8_t playing, uint8_t loops_left) {
+  // debugging output for testing the callback functionality.
+  // TODO: Make this set the music's state to not-playing when
+  //       playing=0 so kbd toggle works as expected by users.
   gotoxy (20,0);
-  cprintf ("%02x %02x %u",playing,loops_left,++numcalls);
+  cprintf ("%02x %02x %-3u",playing,loops_left,++numcalls);
 }
 
 
