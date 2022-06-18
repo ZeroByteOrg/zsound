@@ -1,7 +1,7 @@
 
 ; system routines for interacting with the C stack.
 .import popa
-.import pushax
+.import pusha
 
 .import init_player
 .import stepmusic
@@ -74,24 +74,32 @@ _zsm_setcallback:
   ; set wrapper with the desired callback address
   ; and tell zsound to call the wrapper.
   sei
-  sta callback_vector
-  stx callback_vector+1
+  sta c_callback_vector
+  stx c_callback_vector+1
   cli
-  ldx #<do_callback
-  ldy #>do_callback
+  ldx #<do_c_callback
+  ldy #>do_c_callback
   jmp set_callback
-do_callback:
+
+; Internal callback handler for EOF/Loop callbacks, to translate
+; ZSMPLAYER assembly callback params into C params.
+do_c_callback:
   ; prepare the arguments for the callback routine:
-  ; passed in: Z: zero=stopped, neq=playing and A: loops_left
-  ; void callback(uint8_t playing, uint8_t loops_left )
+  ; passed in: Z: eq=stopped, neq=playing and A: loops_left
+  ; C callback handler declaration:
+  ; void callback_handler(uint8_t playing, uint8_t loops_left )
   beq :+
   ldx #1 ; playing = 1 in C logic (playing)
   bra push_it
 : ldx #0 ; playing = 0 in C logic (stopped)
 push_it:
-  jsr pushax
+  pha
+  txa
+  jsr pusha  ; push "playing" onto the C stack
+  pla        ; set A = loops_left
+  ldx #0     ; promote to uint16_t
   jmp $FFFF  ; RTS from the callback will return to zsmplayer.
-  callback_vector := (*-2)
+  c_callback_vector := (*-2)
 
 .export _zsm_clearcallback
 _zsm_clearcallback := clear_callback
