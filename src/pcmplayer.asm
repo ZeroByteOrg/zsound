@@ -68,6 +68,13 @@ active_digi		:= digi + PCMSTATE::state
 .segment "CODE"
 .proc start_digi: near
 
+	; define some easy-to-read equivalents to the asm struct syntax
+	digitab   = digi + PCMSTATE::digi
+	digi_cfg  = digi + PCMSTATE::digi + DIGITAB::cfg
+	digi_rate = digi + PCMSTATE::digi + DIGITAB::rate
+	digi_addr = digi + PCMSTATE::digi + DIGITAB::addr
+	digi_bank = digi + PCMSTATE::digi + DIGITAB::bank
+
 	stx	zp_tmp
 	sty zp_tmp+1
 	tax
@@ -81,25 +88,44 @@ active_digi		:= digi + PCMSTATE::state
 	ldy #DIGITAB_LAST
 loop:
 	lda (zp_tmp),y
-	sta digi + PCMSTATE::digi,y
+	sta digitab,y
 	dey
 	bpl loop
 
-	lda digi + PCMSTATE::digi + DIGITAB::cfg
-	and #$30
-	sta digi + PCMSTATE::digi + DIGITAB::cfg
+	; check whether PCM data pointer is zero (from ZCM file header)
+	; if so, then use load point + 8.
+	lda digi_addr
+	ora digi_addr+1
+	ora digi_bank
+	bne set_vera_params
+	lda #8
+	clc
+	adc zp_tmp
+	sta digi_addr
+	lda zp_tmp+1
+	adc #0
+	sta digi_addr+1
+	lda RAM_BANK
+	sta digi_bank
+
+	; set VERA pcm playback parameters
+set_vera_params:
+	lda digi_cfg
+	and #$30  ; clear any volume bits from the digitab. Initialize to max volume.
+	sta digi_cfg
 	lda VERA_audio_ctrl
-	and #$0f	; get current volume level
+	and #$0f	; get current volume level (should use a variable instead of VERA)
 	ora #$80	; set the clear_FIFO bit when setting the PCM parameters.
-	ora digi + PCMSTATE::digi + DIGITAB::cfg
+	ora digi_cfg
 	sta VERA_audio_ctrl
 		; TODO: Make the playback engine work in a way that doesn't require
 		; clearing the buffer, yet is able to change parameters at the correct
 		; time when the previous sound finishes draining. Challenge accepted!
 
 	; pre-load the FIFO
-	ldx digi + PCMSTATE::digi + DIGITAB::rate
+	ldx digi_rate
 	jsr set_byte_rate
+	; srz active_digi ; This is currently done in stop_pcm (left here as reminder)
 	dec active_digi
 	dec active_digi	; signal play_pcm to set VERA playback rate after the load
 
@@ -177,7 +203,7 @@ bad_rate:
 	bytesleft	= digi + PCMSTATE::digi + DIGITAB::size
 	fullrate 	= digi + PCMSTATE::byterate
 	halfrate	= digi + PCMSTATE::halfrate
-	thisrate    = zp_tmp
+	thisrate  = zp_tmp
 	nextstate	= zp_tmp2
 
 	lda	active_digi		; quick check whether digi player is active
