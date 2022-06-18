@@ -17,7 +17,7 @@ For each example, enter the directory and use build.sh to create
 the various example programs. build.sh allows you to specify
 which emulator/ROM version you wish to compile for:
 cd examples/simpleplayer
-./build.sh 38
+./build.sh
 
 
 +------------------------------------+
@@ -42,8 +42,18 @@ call player once per frame
 stop
 
 To build your program with zsound, you must specify zsound as
-a source file for the linker to use:
-cl65 -t cx16 -o myprogram.prg zsound.lib
+a source file for the linker to use.
+
+Case 1:
+zsound.lib and .inc/.h files copied into your project's folder:
+
+cl65 -t cx16 -o myprogram.prg myprogram.asm zsound.lib
+
+Case 2:
+Zsound headers and library in the zsound project folder:
+
+cl65 -t cx16 -I/path/to/zsound/include --asm-include-dir /path/to/zsound/inc \
+-o MYPROGRAM.PRG main.c foo.c bar.asm /path/to/zsound/lib/zsound.lib
 
 +-----------------------+
 : 4: The tools scripts: :
@@ -81,7 +91,9 @@ As vgm2zsm supports the YM2612, you can use the Sega Genesis mode of
 Deflemask to have 3 square wave PSG channels and one noise channel
 at the cost of 2 FM channels. Use standard mode, not 3-CH mode, as
 3-CH mode is not supported by the conversion script, as there is no
-way I can think of to even simulate this on YM2151.
+way I can think of to even simulate this on YM2151. Also, vgm2zsm
+does not yet support the PCM/DAC track so plan accordingly in your
+compositions.
 
 Deflemask's Arcade mode uses the YM2151 as the sound chip, as well as
 the Sega PCM chip (Sega Arcade, not Genesis) for PCM tracks.
@@ -102,14 +114,21 @@ If you wish to play PCM audio, you can use tools such as sox or
 Audacity to export raw PCM data. Export it as raw, 8 or 16 bit SIGNED
 values, stereo or mono, and at whatever sample rate you require.
 
-Technically, you should add a dummy 2-byte header to the file, as the
-X16 Kernal drops these 2 bytes when loading files, but in actuality,
-nobody will notice 2 missing samples from the beginning of a PCM file.
+Load the PCM data somewhere into banked RAM, create a table of the PCM
+parameters, and call pcm_triggerdigi with a pointer to the table to
+start playback. (see example programs for further details)
 
-Load the PCM file somewhere into banked RAM, create a table of the PCM
-parameters, and pass a pointer to the table in order to start playback.
-(see example programs for further details)
+Note that pcmplayer.inc and pcmplayer.h provide a struct for the PCM
+parameter table used to trigger digi plaback.
+
+ZCM format is another option. The tools folder includes a utility to
+add a digitab header to raw PCM files (future enhancements will support)
+WAV, MP3, etc as input types). When loading a ZCM formatted file, be sure
+to use headerless mode (added in Kernal revision r39). Once loaded, your
+program may overwrite the first 3 bytes with the actual memory location of
+the PCM sample data. When loading a ZCM file, this address will be 8 bytes
+past the address where the ZCM was loaded.
+
 
 An example of converting a WAV file using sox:
 sox example.wav -t raw -b 8 -c 1 -r 16000 -e unsigned-integer EXAMPLE.PCM
-
