@@ -106,6 +106,7 @@ loop:
 	lda #$FF
 	BANK_SAVE := (*-1)
 	sta RAM_BANK
+	clc ; for now, always return success. (C flag set = fail)
 	rts
 .endproc
 
