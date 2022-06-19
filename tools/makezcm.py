@@ -13,7 +13,7 @@ import argparse
 
 MAX_SIZE = 2048*1024 - 8192    #  2 mb banked ram minus 1 bank (8kb) for kernal.
 
-def convert_source_to_raw(source: str, outputformat: dict):
+def convert_source_to_raw(source: str, outputformat: dict) -> str:
     info = sox.file_info.info(source)
     print("Source file: ",source)
     print(f"   {info['channels']} channels, {info['bitdepth']} bits, {int(info['sample_rate'])} hz ({round(info['duration'], 3)} sec.)")
@@ -26,7 +26,7 @@ def convert_source_to_raw(source: str, outputformat: dict):
     tfm.build_file(source, temp_file)
     return temp_file
 
-def convert_raw_to_zcm(raw_file: str, output_file: str, outputformat: dict):
+def convert_raw_to_zcm(raw_file: str, output_file: str, outputformat: dict) -> None:
     samplerate = outputformat["rate"]
     bits = outputformat["bits"]
     channels = outputformat["channels"]
@@ -70,3 +70,4 @@ if __name__=="__main__":
     else:
         raw_file = convert_source_to_raw(args.inputfile, outputformat)
     convert_raw_to_zcm(raw_file, output_file, outputformat)
+
