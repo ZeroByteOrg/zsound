@@ -18,10 +18,9 @@ def convert_source_to_raw(source: str, outputformat: dict):
     print("Source file: ",source)
     print(f"   {info['channels']} channels, {info['bitdepth']} bits, {int(info['sample_rate'])} hz ({round(info['duration'], 3)} sec.)")
     tfm = sox.Transformer()
-    tfm.contrast()
     tfm.set_output_format(file_type="raw", encoding = "signed-integer" if outputformat["bits"]>8 else None)
     tfm.set_globals(dither=True)
-    tfm.lowpass(frequency = outputformat["rate"]/2)
+    # tfm.lowpass(frequency = outputformat["rate"]/2)
     tfm.convert(samplerate = outputformat["rate"], n_channels = outputformat["channels"], bitdepth = outputformat["bits"])
     temp_file = tempfile.mktemp(".raw")
     tfm.build_file(source, temp_file)
@@ -57,6 +56,7 @@ if __name__=="__main__":
     parser.add_argument("-s", "--stereo", action="store_true", help="stereo output, default is mono")
     parser.add_argument("-r", "--rate", type=int, help="output sample rate, default is %(default)s", default=22050)
     parser.add_argument("-8", "--eight", action="store_true", help="8 bits output, default is 16")
+    parser.add_argument("--raw", action="store_true", help="input file is raw pcm already, just add zcm header")
     parser.add_argument("inputfile")
     args = parser.parse_args()
     outputformat = {
@@ -65,5 +65,8 @@ if __name__=="__main__":
         "bits": 8 if args.eight else 16
     }
     output_file = (os.path.splitext(os.path.split(args.inputfile)[1])[0] + ".zcm").upper()
-    raw_file = convert_source_to_raw(args.inputfile, outputformat)
+    if args.raw:
+        raw_file = args.inputfile
+    else:
+        raw_file = convert_source_to_raw(args.inputfile, outputformat)
     convert_raw_to_zcm(raw_file, output_file, outputformat)
