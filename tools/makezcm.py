@@ -59,10 +59,11 @@ if __name__=="__main__":
     parser.add_argument("-8", "--eight", action="store_true", help="8 bits output, default is 16")
     parser.add_argument("inputfile")
     args = parser.parse_args()
-    outputformat = {}
-    outputformat["channels"] = 2 if args.stereo else 1
-    outputformat["rate"] = args.rate
-    outputformat["bits"] = 8 if args.eight else 16
+    outputformat = {
+        "channels": 2 if args.stereo else 1,
+        "rate": args.rate,
+        "bits": 8 if args.eight else 16
+    }
     output_file = (os.path.splitext(os.path.split(args.inputfile)[1])[0] + ".zcm").upper()
     raw_file = convert_source_to_raw(args.inputfile, outputformat)
     convert_raw_to_zcm(raw_file, output_file, outputformat)
