@@ -18,7 +18,7 @@ def convert_source_to_raw(source: str, outputformat: dict) -> str:
     print("Source file: ",source)
     print(f"   {info['channels']} channels, {info['bitdepth']} bits, {int(info['sample_rate'])} hz ({round(info['duration'], 3)} sec.)")
     tfm = sox.Transformer()
-    tfm.set_output_format(file_type="raw", encoding = "signed-integer" if outputformat["bits"]>8 else None)
+    tfm.set_output_format(file_type="raw", encoding = "signed-integer" if outputformat["bits"]>8 else "signed-integer")
     tfm.set_globals(dither=True)
     # tfm.lowpass(frequency = outputformat["rate"]/2)
     tfm.convert(samplerate = outputformat["rate"], n_channels = outputformat["channels"], bitdepth = outputformat["bits"])

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 # shows info on a ZCM digi file and optionally plays the audio as well.
+# Requires python 'sox' module to be installed, and the sox command line tool.
 
 import sys
 import os
