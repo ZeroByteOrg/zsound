@@ -30,7 +30,8 @@ def convert_raw_to_zcm(raw_file: str, output_file: str, outputformat: dict) -> N
     samplerate = outputformat["rate"]
     bits = outputformat["bits"]
     channels = outputformat["channels"]
-    vera_rate = int((samplerate/(25000000>>16))+1)
+    vera_rate = int((samplerate/(25e6 / 65536))+1)
+    adjusted_samplerate = int(vera_rate * (25e6 / 65536))
     vera_16_bit = 1<<5 if bits==16 else 0
     vera_stereo = 1<<4 if channels==2 else 0
     rawdata = open(raw_file, "rb").read()
@@ -49,7 +50,7 @@ def convert_raw_to_zcm(raw_file: str, output_file: str, outputformat: dict) -> N
     if bits==16:
         duration /= 2
     print("Wrote", output_file, len(header)+len(rawdata), "bytes")
-    print(f"   {channels} channels, {bits} bits, {samplerate} hz ({round(duration, 3)} sec.)")
+    print(f"   {channels} channels, {bits} bits, {adjusted_samplerate} hz ({round(duration, 3)} sec.)")
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="convert audio to zcm")
