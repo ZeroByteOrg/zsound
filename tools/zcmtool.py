@@ -4,6 +4,7 @@
 # Requires python 'sox' module to be installed (pip install sox), and the sox command line tool.
 
 import os
+import sys
 import struct
 import tempfile
 import sox
@@ -138,11 +139,32 @@ def play_audio_file(filename: str, only_info: bool = True) -> None:
             sox.core.play([filename])
 
 
+def determine_closest_output_format(filename: str) -> dict:
+    info = sox.file_info.info(filename)
+    outputformat = {
+        "channels": info["channels"],
+        "rate": info["sample_rate"],
+        "bits": info["bitdepth"]
+    }
+    if outputformat["channels"] > 2:
+        outputformat["channels"] = 2
+    if outputformat["rate"] > 48828:
+        outputformat["rate"] = 48828
+    if outputformat["bits"] < 8:
+        outputformat["bits"] = 8
+    elif 8 < outputformat["bits"] < 16:
+        outputformat["bits"] = 16
+    elif outputformat["bits"] > 16:
+        outputformat["bits"] = 16
+    return outputformat
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="zcm digi audio conversion and playback")
     parser.add_argument("-s", "--stereo", action="store_true", help="stereo output, default is mono")
     parser.add_argument("-r", "--rate", type=int, help="output sample rate, default is %(default)s", default=22050)
     parser.add_argument("-8", "--eight", action="store_true", help="8 bits output, default is 16")
+    parser.add_argument("-k", "--keep-format", action="store_true", help="keep original audio format as best as possible")
     parser.add_argument("-o", "--output", type=str, help="provide your own output file name")
     parser.add_argument("-p", "--play", action="store_true", help="playback the input file")
     parser.add_argument("-i", "--info", action="store_true", help="show info about the input file")
@@ -155,11 +177,17 @@ if __name__ == "__main__":
         play_audio_file(args.inputfile, only_info=True)
     else:
         # audio conversion
-        outputformat = {
-            "channels": 2 if args.stereo else 1,
-            "rate": args.rate,
-            "bits": 8 if args.eight else 16
-        }
+        if args.keep_format:
+            if args.raw:
+                print("Can't use raw input with -k option: cannot determine parameters from the file", file=sys.stderr)
+                raise SystemExit(1)
+            outputformat = determine_closest_output_format(args.inputfile)
+        else:
+            outputformat = {
+                "channels": 2 if args.stereo else 1,
+                "rate": args.rate,
+                "bits": 8 if args.eight else 16
+            }
         output_file = args.output if args.output else (os.path.splitext(os.path.split(args.inputfile)[1])[0] + ".zcm").upper()
         raw_file = args.inputfile if args.raw else convert_source_to_raw(args.inputfile, outputformat)
         convert_raw_to_zcm(raw_file, output_file, outputformat)
