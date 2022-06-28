@@ -4,6 +4,7 @@
 # Requires python 'sox' module to be installed (pip install sox), and the sox command line tool.
 
 import os
+import sys
 import struct
 import tempfile
 import sox
@@ -177,6 +178,9 @@ if __name__ == "__main__":
     else:
         # audio conversion
         if args.keep_format:
+            if args.raw:
+                print("Can't use raw input with -k option: cannot determine parameters from the file", file=sys.stderr)
+                raise SystemExit(1)
             outputformat = determine_closest_output_format(args.inputfile)
         else:
             outputformat = {
