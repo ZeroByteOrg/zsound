@@ -784,8 +784,17 @@ do_callback:
 			jmp (ZSM_VECTOR_notify)
 no_callback:
 			rts
-die:		jmp stopmusic	; if the end of tune is reached twice in the
-							; same frame, something is wrong. Just end.
+die:	;if the end of tune is reached twice in the same frame, something
+ 			;is wrong. Just end. Remove "jsr stepmusic"'s return point from the
+			;stack so that stopmusic will return to the function that called
+			;stepmusic originally when it's finished.
+			tsx
+			inx
+			inx
+			txs
+			stz RECURSION_STOPPER
+			jmp stopmusic
+
 .endproc
 
 ;............
