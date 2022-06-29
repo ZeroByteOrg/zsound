@@ -72,15 +72,20 @@ while ($i < $endOfStream && ! $eof) {
       break;
   }
 }
-if ($eof===FALSE) { print "Error: No EOF byte in the ZSM file!\n"; }
-
+if ($eof===FALSE) { print "Error: No EOF byte in the ZSM file!\n\n"; }
+$post_EOF = sizeof($zsm)-$endOfStream;
 printf("Wasted PSG bytes: %d\n",$shadow['PSG']['WASTED']);
 printf("Wasted  YM bytes: %d\n",$shadow['YM']['WASTED']);
-printf("Total Wasted: %d\n",$shadow['PSG']['WASTED']+$shadow['YM']['WASTED']);
-printf("Total Good  : %d\n\n",$goodbytes);
-print "\n\n";
-printf("Original Size: %d\n",sizeof($zsm))
+printf("Bytes After  EOF: %d\n",$post_EOF);
+$totalWasted = $shadow['PSG']['WASTED']+$shadow['YM']['WASTED']+$post_EOF;
+printf("Total Wasted: %d\n",$totalWasted);
+printf("Total Good  : %d\n",$goodbytes);
+print "\n";
+printf("Original Size: %d\n",sizeof($zsm));
+printf("Discrepancy  : %d\n",abs(sizeof($zsm)-($totalWasted+$goodbytes)));
 exit(0);
+
+// ----------------------------------------------------- Begin Functions
 
 function init_shadow(&$s) {
   $s = array(
@@ -131,7 +136,8 @@ function ym($reg, $val) {
 
   // WRITES tracks how many times PENDING changes. Don't count the initial
   // change, as the final state may/may not be a duplicate to the previous state.
-  if ($shadow['YM']['PENDING'][$reg] >= 0) $shadow['YM']['WRITES'][$reg]+=2;
+  if ($shadow['YM']['PENDING'][$reg] >= 0)
+    $shadow['YM']['WRITES'][$reg]+=2;
   $shadow['YM']['PENDING'][$reg] = $val;
 }
 
@@ -174,6 +180,7 @@ function reset_shadow($cache) {
 
 function flush_shadow(&$cache) {
   global $goodbytes;
+  $goodwrites = array();
   for($i=0 ; $i<sizeof($cache['ACTIVE']) ; $i++) {
     if($cache['PENDING'][$i]>=0) {
       if ($cache['ACTIVE'][$i]==$cache['PENDING'][$i]) {
@@ -182,6 +189,7 @@ function flush_shadow(&$cache) {
       }
       else {
         $goodbytes+=2;
+        $goodwrites[$i]=1
       }
       $cache['PENDING'][$i]=-1;
       $cache['WASTED']+=$cache['WRITES'][$i];
