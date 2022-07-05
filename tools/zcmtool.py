@@ -144,18 +144,13 @@ def determine_closest_output_format(filename: str) -> dict:
     outputformat = {
         "channels": info["channels"],
         "rate": info["sample_rate"],
-        "bits": info["bitdepth"]
+        "bits": info["bitdepth"] or 16
     }
     if outputformat["channels"] > 2:
         outputformat["channels"] = 2
     if outputformat["rate"] > 48828:
         outputformat["rate"] = 48828
-    if outputformat["bits"] < 8:
-        outputformat["bits"] = 8
-    elif 8 < outputformat["bits"] < 16:
-        outputformat["bits"] = 16
-    elif outputformat["bits"] > 16:
-        outputformat["bits"] = 16
+    outputformat["bits"] = 8 if outputformat["bits"] <= 8 else 16
     return outputformat
 
 
