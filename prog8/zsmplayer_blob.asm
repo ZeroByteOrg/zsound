@@ -12,7 +12,7 @@
 .import clear_callback
 .import get_music_speed
 
-.code
+.segment "STARTUP"
 zsm_init:
   jmp init_player
 zsm_play:
