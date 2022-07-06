@@ -24,7 +24,7 @@
 .include "x16.inc"			; Import X16-related symbols
 .include "pcmplayer.inc"	; use the zsound pcm player module
 
-.import helloworld	; REALLY REALLY need to move this OUT of the player library - lol.
+;.import helloworld	; REALLY REALLY need to move this OUT of the player library - lol.
 
 digi			= $A000		; load point for ZCM file
 digi_bank = 2				; defines starting bank in HIRAM
@@ -88,16 +88,14 @@ main:		;wai					; save power :)
 			lda	#BAR_HIDDEN_MODE
 			sta	VERA_dc_video	; hide L1 to end the "rasterbar"
 			bra main
+			; TODO: whenever end-of-digi-playback can be reliably determined and a
+			;       callback is made, allow exit from program.
 
 trigger:
 			ldx #<digi		; load address of PCM parameter table "digi"
 			ldy #>digi		; into .XY
 			lda #2				; A = memory bank where table is stored.
 			jsr start_digi		; (in this case, main memory, so A doesn't matter)
-;			jsr play_pcm
-;			jsr play_pcm
-;			jsr play_pcm
-;			jsr play_pcm
 			rts
 
 ; -----------------------------------------------------------------
@@ -195,8 +193,7 @@ start:
 			jsr init_pcm
 
 			;  ==== load digi file into memory ====
-			lda #'a'
-			jsr CHROUT
+
 			; set BANKRAM to the first bank where digi should load
 			lda	#digi_bank
 			sta	RAM_BANK
@@ -215,18 +212,6 @@ start:
 			ldx	#<digi
 			ldy #>digi
 			jsr LOAD
-
-			lda #'a'
-			jsr CHROUT
-
-			; write the PCM data pointer into the digitab
-			lda #digi_bank
-			sta RAM_BANK
-			sta digi + DIGITAB::bank
-			lda #<(digi + .sizeof(DIGITAB))
-			sta digi + DIGITAB::addr
-			lda #>(digi + .sizeof(DIGITAB))
-			sta digi + DIGITAB::addr+1
 
 			;  ==== Install IRQ handler to process digi playback once per frame ====
 			;
@@ -258,6 +243,5 @@ start:
 
 			lda #1
 			sta	semaphore		; intilize the IRQ semaphore
-			jsr	helloworld
 			jsr	trigger
 			jmp main

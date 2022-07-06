@@ -1,0 +1,199 @@
+#!/usr/bin/php
+<?php
+
+define("ZSM_HDR_LEN",16);
+
+$zsm = file_get_contents($argv[1]);
+$zsm = array_values(unpack('C*',$zsm));
+
+// check / read ZSM header info.
+if ( ($zsm[0]!=0x7a) || ($zsm[1]!=0x6d) ) {
+  print "Not a ZSM file.\n";
+  printf("First two bytes = %x %x\n",$zsm[0],$zsm[1]);
+  exit(1);
+}
+if ($zsm[2] != 1) {
+  print "Invalid ZSM version (zsm[2]) (only supports ver 1)\n";
+  exit(1);
+}
+
+// We reset the shadows at Loop point
+$loopPoint = $zsm[3] + ($zsm[4]<<8) + ($zsm[5]<<16);
+
+// End Of Stream = start of PCM header, else end of data file.
+$endOfStream = $zsm[6] + ($zsm[7]<<8) + ($zsm[8]<<16);
+if ($endOfStream == 0) $endOfStream = sizeof($zsm);
+
+// get channel masks:
+$fmMask = $zsm[9];
+$psgMask = $zsm[10] | ($zsm[11] << 8);
+init_shadow($shadow);
+
+$i = ZSM_HDR_LEN;
+$eof = FALSE;
+$goodbytes=16; // start with the header bytes = good bytes.
+while ($i < $endOfStream && ! $eof) {
+  $cmd = $zsm[$i];
+  if ($i==$loopPoint) {
+    reset_shadow($shadow['YM']);
+    reset_shadow($shadow['PSG']);
+  }
+  switch ($cmd & 0xC0) {
+    case 0xC0: // delay
+    case 0x80: // delay
+      ++$goodbytes;
+      if ($cmd == 0x80) $eof=TRUE;
+      else {
+        flush_shadow($shadow['YM']);
+        flush_shadow($shadow['PSG']);
+      }
+      ++$i;
+      break;
+    case 0x40: // YM/EXTCMD
+      ++$goodbytes;
+      $n = $cmd & 0x3f;
+      ++$i;
+      if ($n == 0) {
+        // EXTCMD
+        $goodbytes +=  1 + ($zsm[$i] & 0x3f);
+        $i += ($zsm[$i] & 0x3f)+1; // skip EXTCMD and data
+      }
+      else {
+        // YM Reg/Val pairs
+        for ($j=0 ; $j<$n ; $j++) {
+          ym($zsm[$i],$zsm[$i+1]);
+          $i+=2;
+        }
+      }
+      break;
+    default: // PSG reg/val pair
+      psg($zsm[$i],$zsm[$i+1], $i);
+      $i += 2;
+      break;
+  }
+}
+if ($eof===FALSE) { print "Error: No EOF byte in the ZSM file!\n\n"; }
+$post_EOF = sizeof($zsm)-$endOfStream;
+printf("Wasted PSG bytes: %d\n",$shadow['PSG']['WASTED']);
+printf("Wasted  YM bytes: %d\n",$shadow['YM']['WASTED']);
+printf("Bytes After  EOF: %d\n",$post_EOF);
+$totalWasted = $shadow['PSG']['WASTED']+$shadow['YM']['WASTED']+$post_EOF;
+printf("Total Wasted: %d\n",$totalWasted);
+printf("Total Good  : %d\n",$goodbytes);
+print "\n";
+printf("Original Size: %d\n",sizeof($zsm));
+printf("Discrepancy  : %d\n",abs(sizeof($zsm)-($totalWasted+$goodbytes)));
+exit(0);
+
+// ----------------------------------------------------- Begin Functions
+
+function init_shadow(&$s) {
+  $s = array(
+    'YM'=>array(
+      'ACTIVE' => array_fill(0,256,-1),
+      'PENDING' => array_fill(0,256,-1),
+      'WRITES' => array_fill(0,256,0),
+      'WASTED' => 0
+    ),
+    'PSG'=>array(
+      'ACTIVE' => array_fill(0,0x40,-1),
+      'PENDING' => array_fill(0,0x40,-1),
+      'WRITES' => array_fill(0,0x40,0),
+      'WASTED' => 0
+    )
+  );
+}
+
+function ym($reg, $val) {
+  global $goodbytes;
+  global $shadow;
+  global $fmMask;
+
+  // first discard writes to unused channels...
+  if ($reg == 0x08 || $reg >= 0x20) {
+    if ($reg == 0x08)
+      $mask = (1 << ($val & 0x07)) & $fmMask;
+    else
+      $mask = (1 << ($reg & 0x07)) & $fmMask;
+    if ($mask == 0) {
+      $shadow['YM']['WASTED']+=2;
+      return;
+    }
+  }
+
+  // handle the two special-case registers KON and AMD/PMD:
+  if ($reg == 0x08) {
+    $goodbytes += 2;
+    return;      // never cache the KON register
+  }
+  if ($reg == 0x19) $reg = 0x1a; // use 0x1A to store PMD value separately.
+
+//  if ($shadow['YM']['PENDING'][$reg] == $val) {
+//    // writing the same pending value multiple times is definitely a waste.
+//    $shadow['YM']['WASTED']++;
+//    return;
+//  }
+
+  // WRITES tracks how many times PENDING changes. Don't count the initial
+  // change, as the final state may/may not be a duplicate to the previous state.
+  if ($shadow['YM']['PENDING'][$reg] >= 0)
+    $shadow['YM']['WRITES'][$reg]+=2;
+  $shadow['YM']['PENDING'][$reg] = $val;
+}
+
+function psg($reg, $val, $o) {
+  global $goodbytes;
+  global $shadow;
+  global $psgMask;
+
+  if ($reg >= 64) {
+    printf("[%x] Invalid PSG reg/val: r:%02x v:%02x\n",$o,$reg,$val);
+    exit;
+  }
+  // First, discard writes to unused channels
+  $channel = floor($reg/4);
+  if (((1 << $channel) && $psgMask) == 0) {
+    $shadow['PSG']['WASTED']+=2;
+    return;
+  }
+
+  // TODO: cache writes to non-volume registers on channels with the
+  //       volume disabled.
+
+//  // perform de-duplication
+//  if ($shadow['PSG']['PENDING'][$reg] == $val) {
+//    // writing the same pending value multiple times is definitely a waste.
+//    $shadow['PSG']['WASTED']++;
+//    return;
+//  }
+  if ($shadow['PSG']['PENDING'][$reg] >= 0)
+    $shadow['PSG']['WRITES'][$reg]+=2;
+  $shadow['PSG']['PENDING'][$reg] = $val;
+
+}
+
+function reset_shadow($cache) {
+  for ($i=0 ; $i<sizeof($cache['ACTIVE']) ; $i++) {
+    $cache['ACTIVE'][$i]=-1;
+  }
+}
+
+function flush_shadow(&$cache) {
+  global $goodbytes;
+  $goodwrites = array();
+  for($i=0 ; $i<sizeof($cache['ACTIVE']) ; $i++) {
+    if($cache['PENDING'][$i]>=0) {
+      if ($cache['ACTIVE'][$i]==$cache['PENDING'][$i]) {
+        $cache['WASTED']+=2;
+        $cache['ACTIVE'][$i]=$cache['PENDING'][$i];
+      }
+      else {
+        $goodbytes+=2;
+        $goodwrites[$i]=1
+      }
+      $cache['PENDING'][$i]=-1;
+      $cache['WASTED']+=$cache['WRITES'][$i];
+      $cache['WRITES'][$i]=0;
+    }
+  }
+}

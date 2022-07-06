@@ -92,26 +92,43 @@ loop:
 	dey
 	bpl loop
 
-	; check whether PCM data pointer is zero (from ZCM file header)
-	; if so, then use load point + 8.
+	; check for ZCM header (blank) PCM pointer
+	; If so, set to digitab address+8
+	lda digi_bank
+	beq check_zero
+check_magic:
+	cmp #$6d ; m
+	bne set_vera_cfg
+	lda digi_addr+1
+	cmp #$63 ; c
+	bne set_vera_cfg
 	lda digi_addr
+	cmp #$7a ; z
+	bne set_vera_cfg
+	bra set_pcm_pointer
+check_zero:
+	ora digi_addr
 	ora digi_addr+1
-	ora digi_bank
-	bne set_vera_params
-	lda #8
+	bne set_vera_cfg
+	; else the pcm pointer=$000000 so fall through to set it.
+set_pcm_pointer:
+	lda RAM_BANK
+	sta digi_bank
+	lda zp_tmp
 	clc
-	adc zp_tmp
+	adc #8
 	sta digi_addr
 	lda zp_tmp+1
 	adc #0
-	sta digi_addr+1
-	lda RAM_BANK
-	sta digi_bank
+	cmp #$c0
+	bcc :+
+	lda #$a0
+	inc digi_bank
+:	sta digi_addr+1
 
-	; set VERA pcm playback parameters
-set_vera_params:
+set_vera_cfg:
 	lda digi_cfg
-	and #$30  ; clear any volume bits from the digitab. Initialize to max volume.
+	and #$30
 	sta digi_cfg
 	lda VERA_audio_ctrl
 	and #$0f	; get current volume level (should use a variable instead of VERA)
