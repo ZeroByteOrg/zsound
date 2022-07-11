@@ -852,19 +852,20 @@ function closestream($tag,$filehandle)
 	unset($pcmstreams[$tag]);
 }
 
-$filesize=filesize(FILENAME);
-if ($f = fopen(FILENAME, "r")) {
+$filesize=@filesize(FILENAME);
+if ($f = @fopen(FILENAME, "r")) {
 	$binary=fread($f,$filesize);
 	fclose($f);
+	if ($gunzip = @gzdecode($binary)) $binary = $gunzip;
+	unset($gunzip);
 }
 else {
 	printf("Unable to open VGM file %s\n",FILENAME);
 	exit(1);
 }
 
-$vgm=unpack(sprintf('C%d',$filesize),$binary);
-
-$vgm = array_values($vgm);
+$vgm=array_values(unpack('C*',$binary));
+unset($binary);
 
 // calculate VGM data offset.
 if (($vgm[0x09] < 2) && ($vgm[0x08] < 0x50)) {
