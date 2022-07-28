@@ -10,7 +10,8 @@
 
 .segment "CODE"
 .import stopmusic
-.export nextdata
+.export nextdata ; delete this once everything is updated
+.export nextpage
 
 ;-----------------------------------------------------------------------
 ; nextdata
@@ -27,12 +28,13 @@
 ;
 
 .segment "CODE"
-.proc nextdata: near
+nextdata:
 			; advance the data pointer, with bank-wrap if necessary
 			inc	data
 			beq	nextpage
 			rts				; pointer remained in the same page. Done.
-nextpage:	lda data+1		; advance the "page" address
+.proc nextpage: near
+			lda data+1		; advance the "page" address
 			inc
 			cmp	#$c0		; Check for bank wrap.
 			bcc nobankwrap

@@ -22,6 +22,7 @@
 ; included in the main api .inc files
 
 .import nextdata
+.import nextpage
 .export data
 
 ZSM_HDR_SIZE	=	16	; does not include PRG header which isn't loaded
@@ -259,6 +260,9 @@ dummy_tune:	.byte ZSM_EOF	; dummy "end of tune" byte - point to this
 			bcs loop_exists
 			stz loop_pointer
 			bra update_zsm
+die:
+			sec
+			rts
 loop_exists:
 			jsr calculate_loop
 			bcs die
@@ -270,35 +274,29 @@ update_zsm:
 			lda tmp+SONGPTR::bank
 			sta data+SONGPTR::bank
 			sta RAM_BANK
-			lda tmp+SONGPTR::addr
-			sta data
+			ldy tmp+SONGPTR::addr
+			stz data
 			lda tmp+SONGPTR::addr+1
 			sta data+1
-			jsr nextdata
-			jsr nextdata ; skip the magic header
+			HIRAM_NEXT
+			HIRAM_NEXT ; skip the magic header
 			lda #$ff
-			sta (data)
+			sta (data),y
 			sta zsm+ZSM_HEADER::version
-			jsr nextdata
+			HIRAM_NEXT
 			lda loop_pointer+SONGPTR::addr
-			sta (data)
-			jsr nextdata
+			sta (data),y
+			HIRAM_NEXT
 			lda loop_pointer+SONGPTR::addr+1
-			sta (data)
-			jsr nextdata
+			sta (data),y
+			HIRAM_NEXT
 			lda loop_pointer+SONGPTR::bank
-			sta (data)
+			sta (data),y
 			; Advance data ptr past header
 			; This is optimized for code size, not speed...
-			ldx #($10 - 5) ; 5 instances of nextdata out of 16.
-skipheader:
-			jsr nextdata
-			dex
-			bne skipheader
+			HIRAM_SKIP ($10 - 5) ; 5 instances of nextdata out of 16.
+			sty data + SONGPTR::addr
 			clc
-			rts
-die:
-			sec
 			rts
 .endproc
 
@@ -333,25 +331,29 @@ die:
 			; and into a tmp space so it's available later to calculate
 			; the loop offset relative to the load point.
 			sta data + SONGPTR::bank   ; A = ZSM starting bank
-			stx data + SONGPTR::addr   ; X = ZSM bank window address lo byte
+			stz data + SONGPTR::addr   ; page-align the data pointer (X will xfer to Y later)
 			sty data + SONGPTR::addr+1 ; Y = ZSM bank window address hi byte
 			sta tmp + SONGPTR::bank
 			stx tmp + SONGPTR::addr
 			sty tmp + SONGPTR::addr+1
+
 			; bank in the music data
-			ldx RAM_BANK
-			phx		; save current BANK to restore later
+			ldy RAM_BANK
+			phy		; save current BANK to restore later
 			sta RAM_BANK
 
+			txa   ; transfer page offset into Y for use as index.
+			tay
 			; copy the ZSM header from loaded place in HiRAM into player's memory
 			ldx #0
 nextbyte:
-			lda (data)
+			lda (data),y
 			sta zsm,x
-			jsr nextdata
+			HIRAM_NEXT
 			inx
 			cpx #16
 			bcc nextbyte
+			sty data + SONGPTR::addr ; store page offset in Data pointer.
 
 			; check ZSM version
 			; see whether it has been processed before (ver=-1)
@@ -651,11 +653,15 @@ nextPSG:					; changing anything.
 			sta RAM_BANK
 			; point VERA to PSG page / set data port = 0 in CTRL
 			VERA_SELECT_PSG
+			; page-align the data pointer
+			ldy data + SONGPTR::addr
+			stz data + SONGPTR::addr
 			bra nextnote
 
 noop:		rts
 
 delayframe:
+			sty data + SONGPTR::addr ; de-page-align the data pointer.
 			and #$7F		; mask off the delay command flag
 			bne :+
 			jmp (ZSM_VECTOR_done)
@@ -663,7 +669,7 @@ delayframe:
 			jmp nextdata	; advance data pointer and exit
 
 nextnote:
-			lda (data)			; 5
+			lda (data),y			; 5
 			bmi delayframe  	;
 								; 2
 			bit #$40			; 2
@@ -673,10 +679,10 @@ playPSG:						; 2
 ;			clc					; 2
 ;			adc #$c0			; 2		; ...to offset it properly into VRAM location
 			sta VERA_addr_low	; 4		; VERA data0 now points at selected PSG register
-			jsr nextdata		; +X
-			lda (data)			; 5		; get the value for writing into PSG
+			HIRAM_NEXT		; +X
+			lda (data),y			; 5		; get the value for writing into PSG
 			sta VERA_data0		; 4		; ... and write it.
-			jsr nextdata		; +X
+			HIRAM_NEXT		; +X
 			bra nextnote		; 3
 
 YMPCM:							; 3
@@ -685,34 +691,36 @@ YMPCM:							; 3
 playYM:							; 2
 			tax					; 2		; X now holds number of reg/val pairs to process
 nextYM:
-			jsr nextdata
+			HIRAM_NEXT
 			dex
 			bmi nextnote	; note: the most YM writes is 63, so this is a safe test
-			lda (data)
-			tay				; Y now holds the YM register address
-			jsr nextdata
+			phx
+			lda (data),y
+			tax
+			HIRAM_NEXT
+			lda (data),y
 			YM_BUSY_WAIT
-			sty YM_reg
-			lda (data)
+			stx YM_reg
+			plx
 			sta YM_data
 			bra nextYM		; 3
 CallHandler:
-			jsr nextdata
+			HIRAM_NEXT
 			; PCM commands are 3 bytes.
-			lda (data)
+			lda (data),y
 			sta CMD_BYTE	; stash the command byte to free up the accumulator
-			jsr nextdata
-			lda (data)
+			HIRAM_NEXT
+			lda (data),y
 			tax
-			jsr nextdata
-			lda (data)
+			HIRAM_NEXT
+			lda (data),y
+			phy
 			tay
-			jsr nextdata
-			; pre-load the stack pointer with return address = nextnote, and jmp to callback
-			; callback should end with rts which will return to nextnote
-			lda #>(nextnote-1)
+			; pre-load the stack pointer with return address = callback_done, and jmp
+			; to callback which should end with rts.
+			lda #>(callback_done-1)
 			pha
-			lda #<(nextnote-1)
+			lda #<(callback_done-1)
 			pha
 			lda #$FF
 			CMD_BYTE = (*-1)
@@ -720,6 +728,10 @@ CallHandler:
 			jmp (ZSM_VECTOR_pcmcall)
 user_callback:
 			jmp (ZSM_VECTOR_user)
+callback_done:
+			ply
+			HIRAM_NEXT
+			jmp nextnote
 .endproc
 
 ; ............

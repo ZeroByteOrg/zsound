@@ -6,6 +6,27 @@
 	bmi :-
 .endmacro
 
+.macro HIRAM_NEXT
+	iny
+	bne :+
+	jsr nextpage
+:
+.endmacro
+
+.macro HIRAM_SKIP n
+.if (n = 1)
+	HIRAM_NEXT
+.else
+	tya
+	clc
+	adc #n
+	tay
+	bcc :+
+	jsr nextpage
+:
+.endif
+.endmacro
+
 .macro VERA_SELECT_PSG stride
 	lda #$FE
 	and VERA_ctrl	; clear bit0 of CTRL register to select data0
