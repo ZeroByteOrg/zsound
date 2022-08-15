@@ -187,7 +187,8 @@ int main() {
   run=1;
   wait=1;
   while(run) {
-    vsync();
+//    vsync();  // use this if you do not have the latest cc65 repo build
+    waitvsync();
     pcm_play();
     zsm_play();
     if(kbhit()) {
