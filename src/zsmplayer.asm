@@ -423,9 +423,8 @@ die:
 			ora #$a0
 			sta loop_pointer + SONGPTR::addr+1
 			; loop_pointer now contains addr in SONGPTR::addr fields.
-			; Resume calculation for bank by rotating left 3 bits from the
-			; value in X into the LSB of loop_ptr+2 after adding the carry
-			; from first calc into loop_pointer+2
+			; Resume calculation for bank....
+			; finish the base + size - $a000
 			lda loop_pointer + SONGPTR::bank
 			adc #0
 			bcs die
@@ -433,7 +432,11 @@ die:
 			txa
 			sec
 			sbc #$a0
-			asl
+			bcs :+
+			dec loop_pointer + SONGPTR::bank
+			; now perform >>13 by rotating the top 3 bits of middle byte into
+			; the bottom 3 bits of the top byte.
+:			asl
 			rol loop_pointer + SONGPTR::bank
 			bcs die
 			asl
