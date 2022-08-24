@@ -705,6 +705,7 @@ nextYM:
 			YM_BUSY_WAIT
 			stx YM_reg
 			plx
+			nop
 			sta YM_data
 			bra nextYM		; 3
 CallHandler:
