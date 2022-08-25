@@ -1,0 +1,17 @@
+al 009751 .pcm_set_volume
+al 00974E .pcm_stop
+al 00974B .pcm_play
+al 009748 .pcm_trigger_digi
+al 009745 .pcm_init
+al 009742 .zsm_get_music_speed
+al 00973F .zsm_clearcallback
+al 00973C .zsm_setcallback
+al 009739 .zsm_noloop
+al 009736 .zsm_forceloop
+al 009733 .zsm_setloop
+al 009730 .zsm_setspeed
+al 00972D .zsm_stop
+al 00972A .zsm_start
+al 009727 .zsm_playIRQ
+al 009724 .zsm_play
+al 009721 .zsm_init

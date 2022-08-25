@@ -1,0 +1,9 @@
+*.BIN
+*.PRG
+*.ZSM
+*.ZCM
+*.zip
+*.map
+*.sym
+*.o
+*.s
