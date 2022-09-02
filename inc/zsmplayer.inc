@@ -194,7 +194,7 @@ __PATCHYM__ = 1
 ; ---------------------------------------------------------------------------
 ; Sets a notification callback whenever a tune finishes or loops.
 ; The callback passes the following parameters:
-; Z=0 if music is stopped, Z=1 if music is playing
+; Z=1 if music is stopped, Z=0 if music is playing
 ; .A = number of remaining loops
 
 ;.................
