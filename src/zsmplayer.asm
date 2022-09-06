@@ -706,6 +706,8 @@ nextYM:
 			stx YM_reg
 			plx
 			nop
+			nop
+			nop
 			sta YM_data
 			bra nextYM		; 3
 CallHandler:
