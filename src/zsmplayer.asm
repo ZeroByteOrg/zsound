@@ -903,7 +903,7 @@ done:		rts
 			lda #<null_handler
 			sta ZSM_VECTOR_notify
 			lda #>null_handler
-			sta ZSM_VECTOR_notify
+			sta ZSM_VECTOR_notify+1
 			cli
 			rts
 .endproc
