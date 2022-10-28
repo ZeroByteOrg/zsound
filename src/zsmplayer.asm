@@ -479,15 +479,16 @@ die:
 ;
 .proc set_music_speed: near
 			; X/Y = tick rate (Hz) - divide by 60 and store to zsm_steps
-			lda data
+			; use r0/r1 ZP as temp space, but preserve it
+			lda r0L
 			pha
-			lda data+1
+			lda r0H
 			pha
-			lda data+2
+			lda r1L
 			pha
 
-			value := data
-			frac  := data+2
+			value := r0
+			frac  := r1L
 			stx value
 			sty value+1
 			stz frac
@@ -532,11 +533,11 @@ hz_to_tickrate:
 			sta zsm_steps+1
 setplayer:
 			pla
-			sta data+2
+			sta r1
 			pla
-			sta data+1
+			sta r0H
 			pla
-			sta data
+			sta r0L
 			CHOOSE_PLAYER
 			rts
 
