@@ -35,8 +35,6 @@ delay:		.res	1
 ; these next two probably need to use TMP ZP space, not permanent.....
 fracstep:	.res	1			; residual steps per frame
 step:			.res	2			; integer steps per frame
-tmp0:	.res 2
-tmp1:   .res 1
 
 .segment "BSS"
 
@@ -481,10 +479,15 @@ die:
 ;
 .proc set_music_speed: near
 			; X/Y = tick rate (Hz) - divide by 60 and store to zsm_steps
-			; use the ZP variable as tmp space
+			lda data
+			pha
+			lda data+1
+			pha
+			lda data+2
+			pha
 
-			value := tmp0
-			frac  := tmp1
+			value := data
+			frac  := data+2
 			stx value
 			sty value+1
 			stz frac
@@ -528,6 +531,12 @@ hz_to_tickrate:
 			adc #0
 			sta zsm_steps+1
 setplayer:
+			pla
+			sta data+2
+			pla
+			sta data+1
+			pla
+			sta data
 			CHOOSE_PLAYER
 			rts
 
