@@ -35,6 +35,8 @@ delay:		.res	1
 ; these next two probably need to use TMP ZP space, not permanent.....
 fracstep:	.res	1			; residual steps per frame
 step:			.res	2			; integer steps per frame
+tmp0:	.res 2
+tmp1:   .res 1
 
 .segment "BSS"
 
@@ -71,6 +73,7 @@ ZSM_VECTOR_COUNT	= (*-ZSM_VECTOR_TABLE)
 	cmp #1
 	bne @set_scale
 @set_1:
+	php
 	sei
 	lda #<stepmusic
 	sta ZSM_VECTOR_play
@@ -78,13 +81,14 @@ ZSM_VECTOR_COUNT	= (*-ZSM_VECTOR_TABLE)
 	sta ZSM_VECTOR_play+1
 	bra @done
 @set_scale:
+	php
 	sei
 	lda #<step_word
 	sta ZSM_VECTOR_play
 	lda #>step_word
 	sta ZSM_VECTOR_play+1
 @done:
-	cli
+	plp
 .endmacro
 
 ;--------------------------------------------------------------------------
@@ -479,8 +483,8 @@ die:
 			; X/Y = tick rate (Hz) - divide by 60 and store to zsm_steps
 			; use the ZP variable as tmp space
 
-			value := r0			; use kernal ZP r0 tmp space
-			frac  := r1			; but with meaningul names here
+			value := tmp0
+			frac  := tmp1
 			stx value
 			sty value+1
 			stz frac
@@ -789,12 +793,13 @@ dec_repeat_count:
 			bne continue
 last_go:
 			; last loop. Change done vector to stopmusic
+			php
 			sei
 			ldx #<zsmstopper
 			stx ZSM_VECTOR_done
 			ldx #>zsmstopper
 			stx ZSM_VECTOR_done+1
-			cli
+			plp
 continue:
 			inc	;notify using loop_count's pre-decrement value
 do_callback:
@@ -865,12 +870,13 @@ done:		rts
 ; A = number of loops (forces playback into looping mode)
 .proc force_loop: near
 			sta loop_count
+			php
 			sei					; just in case the program is using IRQ-driven player
 			lda #<zsmlooper
 			sta ZSM_VECTOR_done
 			lda #>zsmlooper
 			sta ZSM_VECTOR_done+1
-			cli
+			plp
 			rts
 .endproc
 
@@ -881,30 +887,33 @@ done:		rts
 .endproc
 
 .proc disable_loop: near
+			php
 			sei
 			ldx #<zsmstopper
 			stx ZSM_VECTOR_done
 			ldx #>zsmstopper
 			stx ZSM_VECTOR_done+1
-			cli
+			plp
 			rts
 .endproc
 
 .proc set_callback: near
+			php
 			sei
 			stx ZSM_VECTOR_notify
 			sty ZSM_VECTOR_notify+1
-			cli
+			plp
 			rts
 .endproc
 
 .proc clear_callback: near
+			php
 			sei
 			lda #<null_handler
 			sta ZSM_VECTOR_notify
 			lda #>null_handler
 			sta ZSM_VECTOR_notify+1
-			cli
+			plp
 			rts
 .endproc
 
