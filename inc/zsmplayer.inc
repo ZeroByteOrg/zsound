@@ -4,6 +4,8 @@
 .import playmusic_IRQ
 .import startmusic
 .import stopmusic
+.import pausemusic
+.import unpausemusic
 .import set_music_speed
 .import force_loop
 .import set_loop
