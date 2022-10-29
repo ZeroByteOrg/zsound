@@ -600,8 +600,8 @@ add_step:
 			stz zsm_chanmask
 			stz zsm_chanmask+1
 			stz zsm_chanmask+2
-			jmp clear_song_pointers
 			stz saved_delay
+			jmp clear_song_pointers
 .endproc
 
 ;...............
