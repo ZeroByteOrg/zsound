@@ -631,6 +631,8 @@ YMloop:
 			YM_BUSY_WAIT
 			sta YM_reg		; select LR|FB|CON register for voice
 			nop
+			nop
+			nop
 			sty YM_data		; set to 0 to disable L and R output
 nextYM:		inx
 			inc
@@ -708,6 +710,8 @@ YMloop:		ror zsm_chanmask
 			stx	YM_data		; send KeyUP for voice
 			YM_BUSY_WAIT
 			sta YM_reg		; select LR|FB|CON register for voice
+			nop
+			nop
 			nop
 			stz YM_data		; set to 0 to disable L and R output
 nextYM:		inx
