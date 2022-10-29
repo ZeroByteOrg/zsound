@@ -633,7 +633,7 @@ YMloop:
 			nop
 			nop
 			nop
-			sty YM_data		; set to 0 to disable L and R output
+			sty YM_data		; restore value from before pause
 nextYM:		inx
 			inc
 			cpx	#8
