@@ -170,6 +170,7 @@ playmusic_IRQ:
 .segment "CODE"
 .proc init_player: near
 			stz delay ; "not playing"
+			stz saved_delay
 			jsr clear_song_pointers
 			; initialize the ZSM callbacks to null-handler
 			ldx #0
