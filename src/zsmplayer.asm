@@ -707,6 +707,8 @@ YMloop:		ror zsm_chanmask
 			ldy #08
 			sty YM_reg
 			nop
+			nop
+			nop
 			stx	YM_data		; send KeyUP for voice
 			YM_BUSY_WAIT
 			sta YM_reg		; select LR|FB|CON register for voice
