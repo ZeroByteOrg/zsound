@@ -71,6 +71,7 @@ ZSM_VECTOR_COUNT	= (*-ZSM_VECTOR_TABLE)
 	cmp #1
 	bne @set_scale
 @set_1:
+	php
 	sei
 	lda #<stepmusic
 	sta ZSM_VECTOR_play
@@ -78,13 +79,14 @@ ZSM_VECTOR_COUNT	= (*-ZSM_VECTOR_TABLE)
 	sta ZSM_VECTOR_play+1
 	bra @done
 @set_scale:
+	php
 	sei
 	lda #<step_word
 	sta ZSM_VECTOR_play
 	lda #>step_word
 	sta ZSM_VECTOR_play+1
 @done:
-	cli
+	plp
 .endmacro
 
 ;--------------------------------------------------------------------------
@@ -477,10 +479,16 @@ die:
 ;
 .proc set_music_speed: near
 			; X/Y = tick rate (Hz) - divide by 60 and store to zsm_steps
-			; use the ZP variable as tmp space
+			; use r0/r1 ZP as temp space, but preserve it
+			lda r0L
+			pha
+			lda r0H
+			pha
+			lda r1L
+			pha
 
-			value := r0			; use kernal ZP r0 tmp space
-			frac  := r1			; but with meaningul names here
+			value := r0
+			frac  := r1L
 			stx value
 			sty value+1
 			stz frac
@@ -524,6 +532,12 @@ hz_to_tickrate:
 			adc #0
 			sta zsm_steps+1
 setplayer:
+			pla
+			sta r1
+			pla
+			sta r0H
+			pla
+			sta r0L
 			CHOOSE_PLAYER
 			rts
 
@@ -789,12 +803,13 @@ dec_repeat_count:
 			bne continue
 last_go:
 			; last loop. Change done vector to stopmusic
+			php
 			sei
 			ldx #<zsmstopper
 			stx ZSM_VECTOR_done
 			ldx #>zsmstopper
 			stx ZSM_VECTOR_done+1
-			cli
+			plp
 continue:
 			inc	;notify using loop_count's pre-decrement value
 do_callback:
@@ -865,12 +880,13 @@ done:		rts
 ; A = number of loops (forces playback into looping mode)
 .proc force_loop: near
 			sta loop_count
+			php
 			sei					; just in case the program is using IRQ-driven player
 			lda #<zsmlooper
 			sta ZSM_VECTOR_done
 			lda #>zsmlooper
 			sta ZSM_VECTOR_done+1
-			cli
+			plp
 			rts
 .endproc
 
@@ -881,30 +897,33 @@ done:		rts
 .endproc
 
 .proc disable_loop: near
+			php
 			sei
 			ldx #<zsmstopper
 			stx ZSM_VECTOR_done
 			ldx #>zsmstopper
 			stx ZSM_VECTOR_done+1
-			cli
+			plp
 			rts
 .endproc
 
 .proc set_callback: near
+			php
 			sei
 			stx ZSM_VECTOR_notify
 			sty ZSM_VECTOR_notify+1
-			cli
+			plp
 			rts
 .endproc
 
 .proc clear_callback: near
+			php
 			sei
 			lda #<null_handler
 			sta ZSM_VECTOR_notify
 			lda #>null_handler
-			sta ZSM_VECTOR_notify
-			cli
+			sta ZSM_VECTOR_notify+1
+			plp
 			rts
 .endproc
 
