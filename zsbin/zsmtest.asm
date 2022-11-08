@@ -70,7 +70,7 @@ main:
 			lda	#BAR_VISIBLE_MODE
 			sta	semaphore		; set the semaphore so the main loop only plays once per frame
 			sta	VERA_dc_video	; display L1 for a visible performance meter bar
-			jsr	zsm_play
+			jsr	ZSM_PLAY
 			lda	#BAR_HIDDEN_MODE
 			sta	VERA_dc_video	; hide L1 to end the "rasterbar"
 			bra main
@@ -171,10 +171,15 @@ helloworld:
 
 .segment "STARTUP"
 
+			jmp start
+
+.incbin "ZSOUND.PRG"
+.res $2F
+
 start:
 			; initialize the player so that it doesn't do anything
 			; during IRQs prior to startmusic: being called.
-			jsr zsm_init
+			jsr ZSM_INIT
 
 			;  ==== load zsm file into memory ====
 
@@ -235,7 +240,7 @@ start:
 			lda #ZSM_bank
 			ldx #<ZSM_address
 			ldy #>ZSM_address
-			jsr zsm_start
+			jsr ZSM_START
 
 			;Optional: specify a limited number of loops
 			;(forces song to loop, even if it didn't have one defined)
@@ -246,6 +251,6 @@ start:
 			; The callback
 			ldx #<helloworld
 			ldy #>helloworld
-			jsr zsm_setcallback
+			jsr ZSM_SETCALLBACK
 
 			jmp main

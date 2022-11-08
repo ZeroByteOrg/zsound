@@ -4,7 +4,8 @@
 ; Modify the value of ZSOUND_LOAD_ADDR whenever changes to the ZSOUND.BIN requre
 ; a different load point in memory.
 
-ZSOUND_LOAD_ADDR = $971F
+; ZSOUND_LOAD_ADDR = $971F  ; this is the start addr built for X16Robots
+ZSOUND_LOAD_ADDR = $0810
 
 ; ============================================ZSM Music Player API========
 

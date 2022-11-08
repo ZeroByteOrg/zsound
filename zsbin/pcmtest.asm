@@ -81,7 +81,7 @@ main:		;wai					; save power :)
 			lda	#BAR_VISIBLE_MODE
 			sta	semaphore		; set the semaphore so the main loop only plays once per frame
 			sta	VERA_dc_video	; display L1 for a visible performance meter bar
-			jsr pcm_play
+			jsr PCM_PLAY
 			lda	#BAR_HIDDEN_MODE
 			sta	VERA_dc_video	; hide L1 to end the "rasterbar"
 			bra main
@@ -92,7 +92,7 @@ trigger:
 			ldx #<digi		 ; load address of PCM parameter table "digi"
 			ldy #>digi		 ; into .XY
 			lda #digi_bank ; A = memory bank where table is stored.
-			jsr pcm_trigger_digi
+			jsr PCM_TRIGGER_DIGI
 			rts
 
 ; -----------------------------------------------------------------
@@ -184,10 +184,15 @@ nextrow:	sta	VERA_data0
 
 .segment "STARTUP"
 
+			jmp start
+
+.incbin "ZSOUND.PRG"
+.res $2F
+
 start:
 			; initialize the player so that it doesn't do anything
 			; during IRQs prior to startmusic: being called.
-			jsr pcm_init
+			jsr PCM_INIT
 
 			;  ==== load digi file into memory ====
 
