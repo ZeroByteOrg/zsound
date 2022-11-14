@@ -4,6 +4,8 @@
 .import playmusic_IRQ
 .import startmusic
 .import stopmusic
+.import pausemusic
+.import unpausemusic
 .import set_music_speed
 .import force_loop
 .import set_loop
@@ -125,6 +127,30 @@ __PATCHYM__ = 1
 ; Halts music playback, silences all voices used by the current tune,
 ; and clears music channel mask
 
+;.............
+; pausemusic :
+; ===========================================================================
+; Arguments: (none)
+; Returns: (none)
+; Affects: A,X,Y
+; ---------------------------------------------------------------------------
+;
+; As with stopmusic, music is immediately silenced and stopped, but playback
+; can be resumed with unpausemusic.
+
+
+;...............
+; unpausemusic :
+; ===========================================================================
+; Arguments: (none)
+; Returns: (none)
+; Affects: A,X,Y
+; ---------------------------------------------------------------------------
+;
+; Restores the player state to what it was before pausing. PSG channels will
+; immediately return to their former playback volume and state. YM channels
+; will restore their parameters but won't start playing sound until the next
+; note trigger.
 
 ; ------------------------------------------------[On-The-Fly Controls]------
 

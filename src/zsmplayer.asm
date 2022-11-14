@@ -8,6 +8,8 @@
 .export stepmusic
 .export startmusic
 .export stopmusic
+.export pausemusic
+.export unpausemusic
 .export playmusic
 .export playmusic_IRQ
 .export set_music_speed
@@ -48,6 +50,11 @@ zsm_fracsteps:	.res	3	; 16.8 fixed point: n steps per 60hz frame
 zsm_scale60hz:	.res	1	; flag for whether to use the rate->60hz conversion player
 
 zsm_steps	:= zsm_fracsteps + 1
+
+psg_vol_shadow: .res 16
+ym_rl_fb_con_shadow: .res 8
+shadow_offset: .res 1
+saved_delay: .res 1
 
 ; Vector table for various callback pointers
 ZSM_VECTOR_TABLE = *
@@ -163,6 +170,7 @@ playmusic_IRQ:
 .segment "CODE"
 .proc init_player: near
 			stz delay ; "not playing"
+			stz saved_delay
 			jsr clear_song_pointers
 			; initialize the ZSM callbacks to null-handler
 			ldx #0
@@ -533,7 +541,7 @@ hz_to_tickrate:
 			sta zsm_steps+1
 setplayer:
 			pla
-			sta r1
+			sta r1L
 			pla
 			sta r0H
 			pla
@@ -587,8 +595,109 @@ add_step:
 
 .segment "CODE"
 .proc stopmusic: near
+			jsr pausemusic
+			; music channels are now silenced.
+			stz zsm_chanmask
+			stz zsm_chanmask+1
+			stz zsm_chanmask+2
+			stz saved_delay
+			jmp clear_song_pointers
+.endproc
+
+;...............
+; unpausemusic :
+; ===========================================================================
+; Arguments: (none)
+; Returns: (none)
+; Affects: A,X,Y
+; ---------------------------------------------------------------------------
+;
+; Restores PSG volumes and YM RL_FB_CON from saved state, restores delay
+.segment "CODE"
+.proc unpausemusic: near
+			lda saved_delay
+			beq end
+			sta delay
+			stz saved_delay
+
+			lda zsm_chanmask
+			pha
+			ldx #0
+			lda #$20
+YMloop:
+			ror zsm_chanmask
+			bcc nextYM
+			ldy ym_rl_fb_con_shadow,x
+			YM_BUSY_WAIT
+			sta YM_reg		; select LR|FB|CON register for voice
+			nop
+			nop
+			nop
+			sty YM_data		; restore value from before pause
+nextYM:		inx
+			inc
+			cpx	#8
+			bne YMloop
+			pla
+			sta zsm_chanmask
+
+
+			lda #<VRAM_psg+62	; point data0 at volume register of PSG channel 16
+			sta VERA_addr_low
+
+			lda zsm_chanmask+2
+			ldx #8			; 8 voices per byte of chanmask
+PSGloop2:	rol
+			bcc skipPSGvoice2
+			ldy psg_vol_shadow+7,x
+			sty VERA_data0
+			bra nextPSG2
+skipPSGvoice2:
+			bit VERA_data0	; BIT command doesn't modify A, but reads from mem
+							; which will cause VERA to step to next voice w/o
+nextPSG2:					; changing anything.
+			dex
+			bne PSGloop2
+
+
+			lda zsm_chanmask+1
+			ldx #8			; 8 voices per byte of chanmask
+PSGloop1:	rol
+			bcc skipPSGvoice1
+			ldy psg_vol_shadow-1,x
+			sty VERA_data0
+			bra nextPSG1
+skipPSGvoice1:
+			bit VERA_data0	; BIT command doesn't modify A, but reads from mem
+							; which will cause VERA to step to next voice w/o
+nextPSG1:					; changing anything.
+			dex
+			bne PSGloop1
+
+end:
+			rts
+.endproc
+
+;.............
+; pausemusic :
+; ===========================================================================
+; Arguments: (none)
+; Returns: (none)
+; Affects: A,X,Y
+; ---------------------------------------------------------------------------
+;
+; Pauses music playback by silencing PSG channels while storing their state,
+; and silences YM channels by clearing the L/R flags and releasing the note
+
+
+.segment "CODE"
+.proc pausemusic: near
 			;disable ZSM player
-			stz	delay
+			lda	delay
+			sta saved_delay
+			stz delay
+			lda zsm_chanmask
+			pha ; save the channel mask since it gets destroyed here
 			;silence the voices used by the YM2151
 			ldx #0			; .X = voice index 0..7
 			lda #$20		; .A = LR|FB|CON register for voice ($20..$27)
@@ -598,16 +707,21 @@ YMloop:		ror zsm_chanmask
 			ldy #08
 			sty YM_reg
 			nop
+			nop
+			nop
 			stx	YM_data		; send KeyUP for voice
 			YM_BUSY_WAIT
 			sta YM_reg		; select LR|FB|CON register for voice
+			nop
+			nop
 			nop
 			stz YM_data		; set to 0 to disable L and R output
 nextYM:		inx
 			inc
 			cpx	#8
 			bne YMloop
-			stz zsm_chanmask
+			pla
+			sta zsm_chanmask
 
 			; set up VERA data0 port to sweep through the PSG volumes.
 			VERA_SELECT_PSG -3 ; -3 = step amount of -4
@@ -615,6 +729,17 @@ nextYM:		inx
 			; (will fix macro later to allow optional step=x argument)
 ;			lda #$31
 ;			sta VERA_addr_bank	; set step=4
+			lda #<VRAM_psg+62	; point data0 at volume register of PSG channel 16
+			sta VERA_addr_low
+
+			; Save the volume shadows in case we're pausing and not stopping
+			ldx #16
+PSGloop3:
+			lda VERA_data0
+			sta psg_vol_shadow-1,x
+			dex
+			bne PSGloop3
+
 			lda #<VRAM_psg+62	; point data0 at volume register of PSG channel 16
 			sta VERA_addr_low
 
@@ -634,9 +759,7 @@ nextPSG:					; changing anything.
 			dey
 			bne PSGloop2
 
-			; music channels are now silenced.
-
-			jmp clear_song_pointers
+			rts
 .endproc
 
 ; ...........
@@ -711,18 +834,32 @@ nextYM:
 			HIRAM_NEXT
 			dex
 			bmi nextnote	; note: the most YM writes is 63, so this is a safe test
+			stz shadow_offset
 			phx
 			lda (data),y
 			tax
+			; shadow if appropriate
+			cmp #$20
+			bcc noYMshadow
+			cmp #$28
+			bcs noYMshadow
+			and #$07
+			inc
+			sta shadow_offset
+noYMshadow:
 			HIRAM_NEXT
 			lda (data),y
 			YM_BUSY_WAIT
 			stx YM_reg
-			plx
 			nop
 			nop
 			nop
 			sta YM_data
+			ldx shadow_offset
+			beq :+
+			sta ym_rl_fb_con_shadow-1,x
+:
+			plx
 			bra nextYM		; 3
 CallHandler:
 			HIRAM_NEXT
