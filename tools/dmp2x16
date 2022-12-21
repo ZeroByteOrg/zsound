@@ -78,7 +78,7 @@ function load_patches($filelist) {
 		switch(strtolower($ext)) {
 		case 'dmp':
 			$patch = get_dmp_patch($infile);
-			if (sizeof($patch) != 26) { 
+			if (sizeof($patch) != 26) {
 				print "WARNING: $infile did not contain a valid patch. (skipped)\n";
 			} else {
 				$p['data'] = array_merge($p['data'],$patch);
@@ -110,7 +110,7 @@ function get_dmp_patch($filename) {
 	  return($data);
 	}
 	$f = fopen($filename, "r");
-	error_reporting(E_ALL); 
+	error_reporting(E_ALL);
 	if (! $f) {
 	  print "WARNING: Unable to open input file $filename (Skipping)\n";
 	  return(array());
@@ -120,7 +120,7 @@ function get_dmp_patch($filename) {
 	$dmp = unpack(sprintf('C%d',$filesize),$dmp);
 	$dmp = array_values($dmp);
 
-	if (sizeof($dmp)==0) { 
+	if (sizeof($dmp)==0) {
 		print "WARNING: error while reading $filename. (Skipping)\n";
 		return($data);
 	}
@@ -195,9 +195,9 @@ function set_outfile($filename) {
 //returns "errors_present" i.e. true if errors, false if successful
 // i.e. this boolean is shell command "exit code" mentality
 	global $OF;
-	error_reporting(E_ALL ^ E_WARNING); 
+	error_reporting(E_ALL ^ E_WARNING);
 	$OF = fopen($filename,'w');
-	error_reporting(E_ALL); 
+	error_reporting(E_ALL);
 	if (! $OF) {
 		print "Error opening $filename for writing. Skipping.\n";
 		return(true);
@@ -206,7 +206,7 @@ function set_outfile($filename) {
 };
 
 function write_asm($patches) {
-	
+
 	global $OF;
 
 	$ofname = OUTNAME . EXT_ASM;
@@ -215,13 +215,14 @@ function write_asm($patches) {
 	foreach($patches['names'] as $name) {
 		fwrite($OF,"$name:");
 		for ($j=$i;$j<$i+26;$j++) {
-			if ($i-$j % 8 == 0)
+			if (($j-$i) % 8 == 0)
 				fwrite($OF,"\n\t.byte\t");
 			else
 				fwrite($OF,",");
 			fwrite($OF,sprintf('$%02X',$patches['data'][$j]));
 		}
 		fwrite($OF,"\n\n");
+		$i+=26;
 	}
 	fwrite($OF,"\n;Patch Table (low together, high together)\n");
 	foreach(array('lo','hi') as $order) {
@@ -265,7 +266,7 @@ function write_basic($patches) {
 	);
 	$ofname = OUTNAME . EXT_BASIC;
 	if(set_outfile($ofname)) { return(true); }
-				
+
 	printbasic ('REM SET '.VARNAME.'= VOICE NUMBER AND GOSUB HERE TO LOAD PATCH');
 	$i = 0;
 	foreach ($patches['names'] as $name) {
@@ -315,7 +316,7 @@ function write_c($patches) {
 }
 
 function write_bin($patchdata) {
-	
+
 	global $OF;
 
 	$ofname = OUTNAME . EXT_BIN;
@@ -368,13 +369,13 @@ function parse_cmdline_args() {
 	global $argv;
 
 	$dmpfiles = array();
-	
+
 	$opts = getopt('hHprbBacl:o:', [], $rest_index);
 
 	if (isset($opts['h'])) {usage();}
 	if (isset($opts['H'])) {show_format_help();}
 	if ($argc < 2) {shortusage();}
-	
+
 	if (isset($argv[$rest_index])) {
 		$dmpfiles = array_slice($argv,$rest_index);
 		if(WINDOWS) {
@@ -384,14 +385,14 @@ function parse_cmdline_args() {
 	} else {
 		shortusage("No input files specified.");
 	}
-	
+
 	if (isset($opts['o'])) {
 		define("OUTNAME",$opts['o']);
 	}
 	else {
 		define("OUTNAME","patches");
 	}
-	
+
 	if (isset($opts['p']) || isset($opts['r'])) {
 		define("OUT_BIN",true);
 		if(isset($opts['r'])) {
@@ -402,42 +403,42 @@ function parse_cmdline_args() {
 	} else {
 		define("OUT_BIN",false);
 	}
-	
+
 	if (isset($opts['l'])) {
 		// check for numeric? (maybe later)
 		define("BASIC_LINE",$opts['l']);
 	} else {
 		define("BASIC_LINE",10000);
 	}
-	
+
 	if (isset($opts['a'])) {
 		define("OUT_ASM",true);
 	} else {
 		define("OUT_ASM",false);
 	}
-	
+
 	if (isset($opts['b'])||isset($opts['B'])) {
 		define("OUT_BASIC",true);
 		if (isset($opts['b'])) {
 			define("YMBASE",YMBASE_R39);
 		}
-		else { 
+		else {
 			define("YMBASE",YMBASE_R38);
 		}
 	} else {
 		define("OUT_BASIC",false);
 	}
-	
+
 	if (isset($opts['c'])) {
 		define("OUT_C",true);
 	} else {
 		define("OUT_C",false);
 	}
-	
+
 	if ((OUT_ASM || OUT_BASIC || OUT_BIN || OUT_C)===false) {
 		shortusage("No output format selected.");
 	}
-	
+
 	return($dmpfiles);
 }
 
@@ -460,7 +461,7 @@ function usage() {
 
 	$row = "%15s %s\n";
 
-	
+
 	print "dmp2x16 is a script that converts Deflemask FM instrument files into one or ";
 	print "more formats suitable for import on the Commander X16. Each .DMP file is one";
 	print "instrument. All valid instruments will be output combined into a single file";
