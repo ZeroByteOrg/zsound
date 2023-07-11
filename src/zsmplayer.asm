@@ -633,6 +633,11 @@ YMloop:
 			nop
 			nop
 			nop
+			nop
+			nop
+			nop
+			nop
+			nop
 			sty YM_data		; restore value from before pause
 nextYM:		inx
 			inc
@@ -709,9 +714,19 @@ YMloop:		ror zsm_chanmask
 			nop
 			nop
 			nop
+			nop
+			nop
+			nop
+			nop
+			nop
 			stx	YM_data		; send KeyUP for voice
 			YM_BUSY_WAIT
 			sta YM_reg		; select LR|FB|CON register for voice
+			nop
+			nop
+			nop
+			nop
+			nop
 			nop
 			nop
 			nop
@@ -851,6 +866,11 @@ noYMshadow:
 			lda (data),y
 			YM_BUSY_WAIT
 			stx YM_reg
+			nop
+			nop
+			nop
+			nop
+			nop
 			nop
 			nop
 			nop
