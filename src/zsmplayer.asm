@@ -630,9 +630,9 @@ YMloop:
 			ldy ym_rl_fb_con_shadow,x
 			YM_BUSY_WAIT
 			sta YM_reg		; select LR|FB|CON register for voice
+.repeat 9
 			nop
-			nop
-			nop
+.endrepeat
 			sty YM_data		; restore value from before pause
 nextYM:		inx
 			inc
@@ -706,15 +706,15 @@ YMloop:		ror zsm_chanmask
 			YM_BUSY_WAIT
 			ldy #08
 			sty YM_reg
+.repeat 9
 			nop
-			nop
-			nop
+.endrepeat
 			stx	YM_data		; send KeyUP for voice
 			YM_BUSY_WAIT
 			sta YM_reg		; select LR|FB|CON register for voice
+.repeat 9
 			nop
-			nop
-			nop
+.endrepeat
 			stz YM_data		; set to 0 to disable L and R output
 nextYM:		inx
 			inc
@@ -851,9 +851,9 @@ noYMshadow:
 			lda (data),y
 			YM_BUSY_WAIT
 			stx YM_reg
+.repeat 9
 			nop
-			nop
-			nop
+.endrepeat
 			sta YM_data
 			ldx shadow_offset
 			beq :+
