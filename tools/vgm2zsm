@@ -1002,8 +1002,8 @@ while ($i < EOF) {
 		DEBUG("2612LFO: reg 0x22 written with value 0x%02x\n",$d);
 		// LFO speeds: 3.98, 5.56, 6.02, 6.37,
 		//             6.88, 9.63, 48.1, 72.2
-		$lfotable = array ( 0xc2, 0xca, 0xcc, 0xce,
-							0xd0, 0xd7, 0xfc, 0xff );
+		$lfotable = array ( 0xc2, 0xc9, 0xcb, 0xcd,
+							0xcf, 0xd6, 0xfb, 0xff );
 		if (($d & 0x08) > 0) { $d = $lfotable[$d & 0x07]; }
 		else { $d = 0; }
 		$a = 0x18;
